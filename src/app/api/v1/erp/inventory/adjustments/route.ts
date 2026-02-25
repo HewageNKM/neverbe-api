@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { authorizeAndGetUser, authorizeRequest } from "@/services/AuthService";
 import {
   getAdjustments,
   createAdjustment,
@@ -15,9 +15,19 @@ export const GET = async (req: Request) => {
     }
 
     const url = new URL(req.url);
+    const search = url.searchParams.get("search") || undefined;
     const type = url.searchParams.get("type") as AdjustmentType | null;
+    const status = url.searchParams.get("status") as any | null; // Cast to any to avoid strict type issues if not imported
+    const page = parseInt(url.searchParams.get("page") || "1", 10);
+    const size = parseInt(url.searchParams.get("size") || "20", 10);
 
-    const data = await getAdjustments(type || undefined);
+    const data = await getAdjustments(
+      page,
+      size,
+      search,
+      type || undefined,
+      status || undefined,
+    );
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("[Adjustments API] Error:", error);
@@ -27,13 +37,13 @@ export const GET = async (req: Request) => {
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "create_adjustments");
-    if (!response) {
+    const user = await authorizeAndGetUser(req);
+    if (!user) {
       return errorResponse("Unauthorized", 401);
     }
 
     const body = await req.json();
-    const adjustment = await createAdjustment(body);
+    const adjustment = await createAdjustment(body, user.userId);
     return NextResponse.json(adjustment, { status: 201 });
   } catch (error: any) {
     console.error("[Adjustments API] Error:", error);

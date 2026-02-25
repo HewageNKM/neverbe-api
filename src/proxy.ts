@@ -8,6 +8,7 @@ const allowedOrigins = [
   "https://pos.neverbe.lk",
   "https://www.neverbe.lk",
   "https://neverbe.lk",
+  "http://localhost:3000",
 ];
 
 export function proxy(request: NextRequest) {

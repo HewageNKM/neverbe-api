@@ -1,26 +1,11 @@
-import { adminFirestore, adminStorageBucket } from "@/firebase/firebaseAdmin";
+import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Brand } from "@/model/Brand";
 import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "./StorageService";
 
 const COLLECTION = "brands";
-
-// 🔹 Upload logo to Firebase Storage
-const uploadLogo = async (brandId: string, file: File) => {
-  const bucket = adminStorageBucket;
-  const path = `brands/${brandId}/logo_${Date.now()}.jpg`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const fileRef = bucket.file(path);
-
-  await fileRef.save(buffer, {
-    contentType: file.type,
-    resumable: false,
-    public: true,
-  });
-
-  return `https://storage.googleapis.com/${bucket.name}/${path}`;
-};
 
 // 🔹 Create
 export const createBrand = async (brand: Partial<Brand>, logo?: File) => {
@@ -28,7 +13,10 @@ export const createBrand = async (brand: Partial<Brand>, logo?: File) => {
   let logoUrl = "";
 
   if (logo) {
-    logoUrl = await uploadLogo(id, logo);
+    logoUrl = await uploadCompressedImage(
+      logo,
+      `brands/${id}/logo_${Date.now()}.webp`,
+    );
   }
 
   const data: Brand = {
@@ -121,7 +109,7 @@ export const getBrandById = async (id: string) => {
 export const updateBrand = async (
   id: string,
   updates: Partial<Brand>,
-  logo?: File
+  logo?: File,
 ) => {
   const ref = adminFirestore.collection(COLLECTION).doc(id);
   const doc = await ref.get();
@@ -132,7 +120,10 @@ export const updateBrand = async (
   let logoUrl = doc.data()?.logoUrl || "";
 
   if (logo) {
-    logoUrl = await uploadLogo(id, logo);
+    logoUrl = await uploadCompressedImage(
+      logo,
+      `brands/${id}/logo_${Date.now()}.webp`,
+    );
   }
 
   const updatedData = {

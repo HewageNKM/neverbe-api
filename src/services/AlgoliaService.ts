@@ -88,3 +88,31 @@ export const searchStockInventory = async (
     nbPages: result.nbPages,
   };
 };
+
+export const searchAdjustments = async (
+  query: string = "",
+  params: {
+    page?: number;
+    hitsPerPage?: number;
+    filters?: string;
+  } = {},
+) => {
+  const { page = 0, hitsPerPage = 20, filters = "" } = params;
+
+  const result = await client.searchSingleIndex({
+    indexName: "adjustments_index",
+    searchParams: {
+      query,
+      page,
+      hitsPerPage,
+      filters,
+    },
+  });
+
+  return {
+    hits: result.hits,
+    nbHits: result.nbHits,
+    page: result.page,
+    nbPages: result.nbPages,
+  };
+};

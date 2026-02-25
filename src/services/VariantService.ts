@@ -5,6 +5,7 @@ import { Img } from "@/model/Img";
 import { nanoid } from "nanoid";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "./StorageService";
 
 const PRODUCTS_COLLECTION = "products";
 const BUCKET = adminStorageBucket;
@@ -15,17 +16,11 @@ const BUCKET = adminStorageBucket;
 const uploadVariantImage = async (
   file: File,
   productId: string,
-  variantId: string
+  variantId: string,
 ): Promise<Img> => {
   const fileId = nanoid(8).toLowerCase();
-  const fileName = `${fileId}-${file.name}`;
-  const filePath = `products/${productId}/variants/${variantId}/${fileName}`;
-  const fileRef = BUCKET.file(filePath);
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  await fileRef.save(buffer, { metadata: { contentType: file.type } });
-  await fileRef.makePublic();
-  const url = `https://storage.googleapis.com/${BUCKET.name}/${filePath}`;
+  const filePath = `products/${productId}/variants/${variantId}/${fileId}_img.webp`;
+  const url = await uploadCompressedImage(file, filePath);
 
   return { url, file: filePath, order: 0 };
 };
@@ -36,7 +31,7 @@ const uploadVariantImage = async (
 export const addVariant = async (
   productId: string,
   variantData: Partial<ProductVariant>,
-  newImageFiles: File[]
+  newImageFiles: File[],
 ): Promise<ProductVariant> => {
   const productRef = adminFirestore
     .collection(PRODUCTS_COLLECTION)
@@ -52,7 +47,7 @@ export const addVariant = async (
     // --- Step 2: Prepare and upload images ---
     const variantId = `var-${nanoid(8)}`.toLowerCase();
     const uploadPromises = newImageFiles.map((file) =>
-      uploadVariantImage(file, productId, variantId)
+      uploadVariantImage(file, productId, variantId),
     );
     const uploadedImages = await Promise.all(uploadPromises);
     const finalImages = [...(variantData.images || []), ...uploadedImages];
@@ -88,7 +83,7 @@ export const addVariant = async (
     });
 
     console.log(
-      `Variant ${variantId} added and tags updated for product ${productId}`
+      `Variant ${variantId} added and tags updated for product ${productId}`,
     );
     return newVariant;
   } catch (error) {
@@ -105,7 +100,7 @@ export const updateVariant = async (
   productId: string,
   variantId: string,
   variantData: Partial<ProductVariant>,
-  newImageFiles: File[]
+  newImageFiles: File[],
 ): Promise<ProductVariant> => {
   const productRef = adminFirestore
     .collection(PRODUCTS_COLLECTION)
@@ -120,18 +115,18 @@ export const updateVariant = async (
     const existingVariants = currentProductData.variants || [];
 
     const variantIndex = existingVariants.findIndex(
-      (v) => v.variantId === variantId
+      (v) => v.variantId === variantId,
     );
     if (variantIndex === -1) {
       throw new AppError(
         `Variant with ID ${variantId} not found in product ${productId}`,
-        404
+        404,
       );
     }
 
     // --- Step 2: Prepare and upload new images ---
     const uploadPromises = newImageFiles.map((file) =>
-      uploadVariantImage(file, productId, variantId)
+      uploadVariantImage(file, productId, variantId),
     );
     const uploadedImages = await Promise.all(uploadPromises);
     // Use the potentially modified list of existing images from variantData
@@ -149,7 +144,7 @@ export const updateVariant = async (
 
     // --- Step 4: Construct the new variants array ---
     const newVariantsArray = existingVariants.map((v, index) =>
-      index === variantIndex ? updatedVariant : v
+      index === variantIndex ? updatedVariant : v,
     );
 
     // --- Step 5: Update product with the modified variants array ---
@@ -170,7 +165,7 @@ export const updateVariant = async (
     });
 
     console.log(
-      `Variant ${variantId} updated and tags updated for product ${productId}`
+      `Variant ${variantId} updated and tags updated for product ${productId}`,
     );
     return updatedVariant;
   } catch (error) {
@@ -185,7 +180,7 @@ export const updateVariant = async (
  */
 export const deleteVariant = async (
   productId: string,
-  variantId: string
+  variantId: string,
 ): Promise<boolean> => {
   const productRef = adminFirestore
     .collection(PRODUCTS_COLLECTION)
@@ -200,11 +195,11 @@ export const deleteVariant = async (
     const existingVariants = currentProductData.variants || [];
 
     const variantIndex = existingVariants.findIndex(
-      (v) => v.variantId === variantId
+      (v) => v.variantId === variantId,
     );
     if (variantIndex === -1) {
       console.warn(
-        `Variant ${variantId} not found for deletion in product ${productId}.`
+        `Variant ${variantId} not found for deletion in product ${productId}.`,
       );
       return false;
     }
@@ -237,7 +232,7 @@ export const deleteVariant = async (
     // TODO: Optionally delete images from storage here or via a scheduled function later
 
     console.log(
-      `Variant ${variantId} marked deleted and tags updated for product ${productId}`
+      `Variant ${variantId} marked deleted and tags updated for product ${productId}`,
     );
     return true;
   } catch (error) {
@@ -261,7 +256,7 @@ export const getProductVariantsForDropdown = async (productId: string) => {
 
     const productData = productSnap.data() as Product;
     const activeVariants = (productData.variants || []).filter(
-      (variant) => variant.isDeleted !== true && variant.status === true
+      (variant) => variant.isDeleted !== true && variant.status === true,
     );
 
     const variants = activeVariants.map((variant) => ({

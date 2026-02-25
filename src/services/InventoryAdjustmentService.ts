@@ -1,5 +1,6 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { adminFirestore, adminAuth } from "@/firebase/firebaseAdmin";
 import {
+  ActionBy,
   InventoryAdjustment,
   AdjustmentItem,
   AdjustmentType,
@@ -7,6 +8,7 @@ import {
 } from "@/model/InventoryAdjustment";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
+import { searchAdjustments } from "./AlgoliaService";
 
 const COLLECTION = "inventory_adjustments";
 const INVENTORY_COLLECTION = "stock_inventory";
@@ -17,7 +19,7 @@ const INVENTORY_COLLECTION = "stock_inventory";
 const generateAdjustmentNumber = async (): Promise<string> => {
   const today = new Date();
   const prefix = `ADJ-${today.getFullYear()}${String(
-    today.getMonth() + 1
+    today.getMonth() + 1,
   ).padStart(2, "0")}`;
 
   const snapshot = await adminFirestore
@@ -38,23 +40,64 @@ const generateAdjustmentNumber = async (): Promise<string> => {
 };
 
 /**
- * Get all adjustments
+ * Get all adjustments with Algolia search
  */
 export const getAdjustments = async (
-  type?: AdjustmentType
-): Promise<InventoryAdjustment[]> => {
+  pageNumber = 1,
+  size = 20,
+  search?: string,
+  type?: AdjustmentType,
+  status?: AdjustmentStatus,
+): Promise<{ dataList: InventoryAdjustment[]; rowCount: number }> => {
   try {
-    let query: FirebaseFirestore.Query = adminFirestore.collection(COLLECTION);
+    const filters: string[] = [];
 
-    if (type) {
-      query = query.where("type", "==", type);
+    if (type) filters.push(`type:"${type}"`);
+    if (status) filters.push(`status:"${status}"`);
+
+    const { hits, nbHits } = await searchAdjustments(search || "", {
+      page: pageNumber - 1,
+      hitsPerPage: size,
+      filters: filters.join(" AND "),
+    });
+
+    const adjustments = hits.map((hit: Record<string, any>) => ({
+      ...hit,
+      id: (hit.objectID as string) || (hit.id as string),
+      createdAt: hit.createdAt,
+      updatedAt: hit.updatedAt,
+    })) as (InventoryAdjustment & { adjustedByName?: string })[];
+
+    // Resolve adjustedBy user names
+    const userIds = Array.from(
+      new Set(adjustments.map((a) => a.adjustedBy).filter(Boolean)),
+    );
+    if (userIds.length > 0) {
+      try {
+        const usersResult = await adminAuth.getUsers(
+          userIds.map((id) => ({ uid: id as string })),
+        );
+        const userMap = new Map(
+          usersResult.users.map((u) => [
+            u.uid,
+            u.displayName || u.email || "Unknown User",
+          ]),
+        );
+
+        adjustments.forEach((adj) => {
+          if (adj.adjustedBy) {
+            adj.adjustedByName = userMap.get(adj.adjustedBy);
+          }
+        });
+      } catch (authError) {
+        console.warn(
+          "[AdjustmentService] Error resolving usernames:",
+          authError,
+        );
+      }
     }
 
-    const snapshot = await query.get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as InventoryAdjustment[];
+    return { dataList: adjustments, rowCount: nbHits };
   } catch (error) {
     console.error("[AdjustmentService] Error fetching adjustments:", error);
     throw error;
@@ -65,14 +108,29 @@ export const getAdjustments = async (
  * Get adjustment by ID
  */
 export const getAdjustmentById = async (
-  id: string
-): Promise<InventoryAdjustment> => {
+  id: string,
+): Promise<InventoryAdjustment & { adjustedByName?: string }> => {
   try {
     const doc = await adminFirestore.collection(COLLECTION).doc(id).get();
     if (!doc.exists) {
       throw new AppError(`Adjustment with ID ${id} not found`, 404);
     }
-    return { id: doc.id, ...doc.data() } as InventoryAdjustment;
+    const data = doc.data() as InventoryAdjustment;
+    let adjustedByName = "";
+
+    if (data.adjustedBy) {
+      try {
+        const user = await adminAuth.getUser(data.adjustedBy);
+        adjustedByName = user.displayName || user.email || "Unknown User";
+      } catch (e) {
+        console.warn(
+          "[AdjustmentService] Error fetching user for detail view",
+          e,
+        );
+      }
+    }
+
+    return { id: doc.id, ...data, adjustedByName };
   } catch (error) {
     console.error("[AdjustmentService] Error fetching adjustment:", error);
     throw error;
@@ -86,7 +144,8 @@ export const createAdjustment = async (
   adjustment: Omit<
     InventoryAdjustment,
     "id" | "adjustmentNumber" | "createdAt" | "updatedAt"
-  >
+  >,
+  userId: string,
 ): Promise<InventoryAdjustment> => {
   try {
     const adjustmentNumber = await generateAdjustmentNumber();
@@ -97,6 +156,7 @@ export const createAdjustment = async (
       ...adjustment,
       status,
       adjustmentNumber,
+      adjustedBy: userId,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -107,7 +167,7 @@ export const createAdjustment = async (
     }
 
     console.log(
-      `[AdjustmentService] Created adjustment ${adjustmentNumber} with ${adjustment.items.length} items`
+      `[AdjustmentService] Created adjustment ${adjustmentNumber} with ${adjustment.items.length} items`,
     );
 
     return {
@@ -128,7 +188,7 @@ export const createAdjustment = async (
 export const updateAdjustmentStatus = async (
   id: string,
   status: AdjustmentStatus,
-  userId: string // Who updated it
+  userId: string, // Who updated it
 ): Promise<void> => {
   try {
     const docRef = adminFirestore.collection(COLLECTION).doc(id);
@@ -144,7 +204,7 @@ export const updateAdjustmentStatus = async (
       throw new AppError("Cannot change status of an APPROVED adjustment", 400);
     }
 
-    const updates: any = {
+    const updates: Record<string, any> = {
       status,
       updatedAt: FieldValue.serverTimestamp(),
       adjustedBy: userId, // Track who approved/rejected
@@ -167,7 +227,7 @@ export const updateAdjustmentStatus = async (
  */
 const updateInventoryFromAdjustment = async (
   items: AdjustmentItem[],
-  type: AdjustmentType
+  type: AdjustmentType,
 ): Promise<void> => {
   const batch = adminFirestore.batch();
   /* Use plain object to avoid iteration issues */

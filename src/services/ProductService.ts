@@ -9,6 +9,7 @@ import { PopularItem } from "@/model/PopularItem";
 import { Timestamp } from "firebase-admin/firestore";
 import { searchProducts } from "./AlgoliaService";
 import { AppError } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "./StorageService";
 
 const PRODUCTS_COLLECTION = "products";
 const BUCKET = adminStorageBucket;
@@ -16,18 +17,8 @@ const uploadThumbnail = async (
   file: File,
   id: string,
 ): Promise<Product["thumbnail"]> => {
-  const filePath = `products/${id}/thumbnail/${file.name}`;
-  const fileRef = BUCKET.file(filePath);
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  await fileRef.save(buffer, {
-    metadata: {
-      contentType: file.type,
-    },
-  });
-
-  await fileRef.makePublic();
-  const url = `https://storage.googleapis.com/${BUCKET.name}/${filePath}`;
+  const filePath = `products/${id}/thumbnail/thumb_${Date.now()}.webp`;
+  const url = await uploadCompressedImage(file, filePath);
 
   return {
     url: url,

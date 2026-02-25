@@ -5,6 +5,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { toSafeLocaleString } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "./StorageService";
 
 const PROMOTIONS_COLLECTION = "promotions";
 
@@ -13,18 +14,9 @@ const COUPON_USAGE_COLLECTION = "coupon_usage";
 const BUCKET = adminStorageBucket;
 
 const uploadBanner = async (file: File, id: string): Promise<string> => {
-  const filePath = `promotions/${id}/banner/${file.name}`;
-  const fileRef = BUCKET.file(filePath);
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  await fileRef.save(buffer, {
-    metadata: {
-      contentType: file.type,
-    },
-  });
-
-  await fileRef.makePublic();
-  return `https://storage.googleapis.com/${BUCKET.name}/${filePath}`;
+  const filePath = `promotions/${id}/banner/banner_${Date.now()}.webp`;
+  const url = await uploadCompressedImage(file, filePath);
+  return url;
 };
 
 // --- PROMOTIONS CRUD ---
@@ -32,7 +24,7 @@ const uploadBanner = async (file: File, id: string): Promise<string> => {
 export const getPromotions = async (
   pageNumber: number = 1,
   size: number = 20,
-  filterStatus?: string
+  filterStatus?: string,
 ): Promise<{ dataList: Promotion[]; rowCount: number }> => {
   try {
     let query: FirebaseFirestore.Query = adminFirestore
@@ -78,7 +70,7 @@ export const getPromotions = async (
 
 export const createPromotion = async (
   data: Omit<Promotion, "id" | "updatedAt" | "createdAt" | "usageCount">,
-  file?: File | null
+  file?: File | null,
 ): Promise<Promotion> => {
   const docId = `promo-${nanoid(10)}`;
   const now = FieldValue.serverTimestamp();
@@ -112,7 +104,7 @@ export const createPromotion = async (
 export const updatePromotion = async (
   id: string,
   data: Partial<Promotion>,
-  file?: File | null
+  file?: File | null,
 ): Promise<void> => {
   const docRef = adminFirestore.collection(PROMOTIONS_COLLECTION).doc(id);
   const docSnap = await docRef.get();
@@ -187,7 +179,7 @@ export const getPromotionById = async (id: string): Promise<Promotion> => {
 
 export const updateCoupon = async (
   id: string,
-  data: Partial<Coupon>
+  data: Partial<Coupon>,
 ): Promise<void> => {
   const docRef = adminFirestore.collection(COUPONS_COLLECTION).doc(id);
   const docSnap = await docRef.get();
@@ -276,7 +268,7 @@ export const getCoupons = async (): Promise<Coupon[]> => {
 };
 
 export const createCoupon = async (
-  data: Omit<Coupon, "id" | "createdAt" | "updatedAt" | "usageCount">
+  data: Omit<Coupon, "id" | "createdAt" | "updatedAt" | "usageCount">,
 ): Promise<Coupon> => {
   try {
     const id = nanoid(10);
@@ -318,7 +310,7 @@ interface CartItem {
  */
 const checkVariantEligibility = (
   cartItems: CartItem[],
-  targets: ProductVariantTarget[]
+  targets: ProductVariantTarget[],
 ): boolean => {
   if (!targets || targets.length === 0) {
     return true; // No variant restrictions, all products allowed
@@ -326,7 +318,7 @@ const checkVariantEligibility = (
 
   for (const target of targets) {
     const matchingCartItems = cartItems.filter(
-      (item) => item.productId === target.productId
+      (item) => item.productId === target.productId,
     );
 
     if (matchingCartItems.length === 0) {
@@ -341,7 +333,7 @@ const checkVariantEligibility = (
     if (target.variantMode === "SPECIFIC_VARIANTS" && target.variantIds) {
       // Check if any cart item has a matching variant
       const hasMatchingVariant = matchingCartItems.some(
-        (item) => item.variantId && target.variantIds!.includes(item.variantId)
+        (item) => item.variantId && target.variantIds!.includes(item.variantId),
       );
       if (hasMatchingVariant) {
         return true;
@@ -357,7 +349,7 @@ const checkVariantEligibility = (
  */
 const getEligibleCartItems = (
   cartItems: CartItem[],
-  targets: ProductVariantTarget[]
+  targets: ProductVariantTarget[],
 ): CartItem[] => {
   if (!targets || targets.length === 0) {
     return cartItems; // All items eligible
@@ -386,7 +378,7 @@ export const validateCoupon = async (
   code: string,
   userId: string | null,
   cartTotal: number,
-  cartItems: CartItem[]
+  cartItems: CartItem[],
 ): Promise<{
   valid: boolean;
   discount: number;
@@ -464,7 +456,7 @@ export const validateCoupon = async (
   if (coupon.minQuantity) {
     const totalQuantity = cartItems.reduce(
       (sum, item) => sum + item.quantity,
-      0
+      0,
     );
     if (totalQuantity < coupon.minQuantity) {
       return {
@@ -482,7 +474,7 @@ export const validateCoupon = async (
   ) {
     const variantEligible = checkVariantEligibility(
       cartItems,
-      coupon.applicableProductVariants
+      coupon.applicableProductVariants,
     );
     if (!variantEligible) {
       return {
@@ -504,7 +496,7 @@ export const validateCoupon = async (
       coupon.applicableProductVariants.length === 0)
   ) {
     const hasApplicableProduct = cartItems.some((item) =>
-      coupon.applicableProducts!.includes(item.productId)
+      coupon.applicableProducts!.includes(item.productId),
     );
     if (!hasApplicableProduct) {
       return {
@@ -527,10 +519,10 @@ export const validateCoupon = async (
       .get();
 
     const productCategories = productsSnapshot.docs.map(
-      (doc) => doc.data().category
+      (doc) => doc.data().category,
     );
     const hasApplicableCategory = productCategories.some((cat) =>
-      coupon.applicableCategories!.includes(cat)
+      coupon.applicableCategories!.includes(cat),
     );
 
     if (!hasApplicableCategory) {
@@ -547,7 +539,7 @@ export const validateCoupon = async (
   // 10. Excluded Products Check
   if (coupon.excludedProducts && coupon.excludedProducts.length > 0) {
     const allExcluded = cartItems.every((item) =>
-      coupon.excludedProducts!.includes(item.productId)
+      coupon.excludedProducts!.includes(item.productId),
     );
     if (allExcluded) {
       return {
@@ -598,11 +590,11 @@ export const validateCoupon = async (
     ) {
       eligibleItems = getEligibleCartItems(
         cartItems,
-        coupon.applicableProductVariants
+        coupon.applicableProductVariants,
       );
       applicableTotal = eligibleItems.reduce(
         (sum, item) => sum + item.price * item.quantity,
-        0
+        0,
       );
     }
     // Fallback to legacy product-level targeting
@@ -611,11 +603,11 @@ export const validateCoupon = async (
       coupon.applicableProducts.length > 0
     ) {
       eligibleItems = cartItems.filter((item) =>
-        coupon.applicableProducts!.includes(item.productId)
+        coupon.applicableProducts!.includes(item.productId),
       );
       applicableTotal = eligibleItems.reduce(
         (sum, item) => sum + item.price * item.quantity,
-        0
+        0,
       );
     }
 
@@ -646,7 +638,7 @@ export const validateCoupon = async (
  */
 const getUserCouponUsageCount = async (
   couponId: string,
-  userId: string
+  userId: string,
 ): Promise<number> => {
   const snapshot = await adminFirestore
     .collection(COUPON_USAGE_COLLECTION)
@@ -664,7 +656,7 @@ export const trackCouponUsage = async (
   couponId: string,
   userId: string,
   orderId: string,
-  discountApplied: number
+  discountApplied: number,
 ) => {
   const usageRef = adminFirestore.collection(COUPON_USAGE_COLLECTION).doc();
   await usageRef.set({
@@ -710,7 +702,7 @@ interface CartDiscountResult {
 export const calculateCartDiscount = async (
   cartItems: CartItem[],
   cartTotal: number,
-  userId?: string | null
+  userId?: string | null,
 ): Promise<CartDiscountResult> => {
   // Fetch ACTIVE promotions (excluding soft-deleted)
   const promotionsSnap = await adminFirestore
@@ -720,7 +712,7 @@ export const calculateCartDiscount = async (
     .get();
 
   const promotions = promotionsSnap.docs.map(
-    (d) => ({ id: d.id, ...d.data() } as Promotion)
+    (d) => ({ id: d.id, ...d.data() }) as Promotion,
   );
 
   // Sort by priority (high to low)
@@ -730,12 +722,12 @@ export const calculateCartDiscount = async (
   const eligiblePromotions: { promo: Promotion; discount: number }[] = [];
 
   console.log(
-    `[PromotionService] Found ${promotions.length} active promotions`
+    `[PromotionService] Found ${promotions.length} active promotions`,
   );
 
   for (const promo of promotions) {
     console.log(
-      `[PromotionService] Checking promo: ${promo.id} (${promo.name})`
+      `[PromotionService] Checking promo: ${promo.id} (${promo.name})`,
     );
 
     // Date Checks
@@ -750,13 +742,13 @@ export const calculateCartDiscount = async (
 
     if (now < startDate) {
       console.log(
-        `[PromotionService] Skipped ${promo.id}: Not started (Starts: ${startDate})`
+        `[PromotionService] Skipped ${promo.id}: Not started (Starts: ${startDate})`,
       );
       continue;
     }
     if (now > endDate) {
       console.log(
-        `[PromotionService] Skipped ${promo.id}: Expired (Ends: ${endDate})`
+        `[PromotionService] Skipped ${promo.id}: Expired (Ends: ${endDate})`,
       );
       continue;
     }
@@ -768,11 +760,11 @@ export const calculateCartDiscount = async (
     ) {
       const variantEligible = checkVariantEligibility(
         cartItems,
-        promo.applicableProductVariants
+        promo.applicableProductVariants,
       );
       if (!variantEligible) {
         console.log(
-          `[PromotionService] Skipped ${promo.id}: Variant eligibility check failed`
+          `[PromotionService] Skipped ${promo.id}: Variant eligibility check failed`,
         );
         continue;
       }
@@ -795,7 +787,7 @@ export const calculateCartDiscount = async (
       if (condition.type === "MIN_AMOUNT") {
         if (cartTotal < Number(condition.value)) {
           console.log(
-            `[PromotionService] Condition Failed ${promo.id}: MIN_AMOUNT ${cartTotal} < ${condition.value}`
+            `[PromotionService] Condition Failed ${promo.id}: MIN_AMOUNT ${cartTotal} < ${condition.value}`,
           );
           conditionsMet = false;
         }
@@ -804,17 +796,17 @@ export const calculateCartDiscount = async (
         const applicableItems =
           specificProductIds.length > 0
             ? cartItems.filter((item) =>
-                specificProductIds.includes(item.productId)
+                specificProductIds.includes(item.productId),
               )
             : cartItems;
 
         const totalQty = applicableItems.reduce(
           (sum, item) => sum + item.quantity,
-          0
+          0,
         );
         if (totalQty < Number(condition.value)) {
           console.log(
-            `[PromotionService] Condition Failed ${promo.id}: MIN_QUANTITY ${totalQty} < ${condition.value}`
+            `[PromotionService] Condition Failed ${promo.id}: MIN_QUANTITY ${totalQty} < ${condition.value}`,
           );
           conditionsMet = false;
         }
@@ -831,11 +823,11 @@ export const calculateCartDiscount = async (
             (item) =>
               productIds.includes(item.productId) &&
               item.variantId &&
-              condition.variantIds!.includes(item.variantId)
+              condition.variantIds!.includes(item.variantId),
           );
           if (!hasMatchingVariant) {
             console.log(
-              `[PromotionService] Condition Failed ${promo.id}: SPECIFIC_VARIANTS not found`
+              `[PromotionService] Condition Failed ${promo.id}: SPECIFIC_VARIANTS not found`,
             );
             // NOTE: Frontend treats variant checks strictly if they exist on the condition being iterated.
             // However, for pure product IDs, it effectively uses the aggregated list.
@@ -849,12 +841,12 @@ export const calculateCartDiscount = async (
           // General product check - use the aggregated list (OR logic)
           // Frontend: if (specificProductIds.length > 0) return items.some(...)
           const hasProduct = cartItems.some((item) =>
-            specificProductIds.includes(item.productId)
+            specificProductIds.includes(item.productId),
           );
 
           if (!hasProduct) {
             console.log(
-              `[PromotionService] Condition Failed ${promo.id}: SPECIFIC_PRODUCT not found (checked aggregated list)`
+              `[PromotionService] Condition Failed ${promo.id}: SPECIFIC_PRODUCT not found (checked aggregated list)`,
             );
             conditionsMet = false;
           }
@@ -863,7 +855,7 @@ export const calculateCartDiscount = async (
         // Validate customer has required tag
         if (!userId) {
           console.log(
-            `[PromotionService] Condition Failed ${promo.id}: CUSTOMER_TAG requires authenticated user`
+            `[PromotionService] Condition Failed ${promo.id}: CUSTOMER_TAG requires authenticated user`,
           );
           conditionsMet = false;
         } else {
@@ -875,7 +867,7 @@ export const calculateCartDiscount = async (
 
             if (!userDoc.exists) {
               console.log(
-                `[PromotionService] Condition Failed ${promo.id}: User ${userId} not found`
+                `[PromotionService] Condition Failed ${promo.id}: User ${userId} not found`,
               );
               conditionsMet = false;
             } else {
@@ -885,19 +877,19 @@ export const calculateCartDiscount = async (
 
               if (!customerTags.includes(requiredTag)) {
                 console.log(
-                  `[PromotionService] Condition Failed ${promo.id}: Customer missing tag "${requiredTag}"`
+                  `[PromotionService] Condition Failed ${promo.id}: Customer missing tag "${requiredTag}"`,
                 );
                 conditionsMet = false;
               } else {
                 console.log(
-                  `[PromotionService] CUSTOMER_TAG validated for ${promo.id}: Customer has tag "${requiredTag}"`
+                  `[PromotionService] CUSTOMER_TAG validated for ${promo.id}: Customer has tag "${requiredTag}"`,
                 );
               }
             }
           } catch (error) {
             console.error(
               `[PromotionService] Error checking CUSTOMER_TAG for ${promo.id}:`,
-              error
+              error,
             );
             conditionsMet = false;
           }
@@ -923,7 +915,7 @@ export const calculateCartDiscount = async (
 
     const eligibleTotal = eligibleItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
-      0
+      0,
     );
 
     if (action.type === "PERCENTAGE_OFF") {
@@ -937,7 +929,7 @@ export const calculateCartDiscount = async (
 
     if (currentDiscount > 0) {
       console.log(
-        `[PromotionService] Eligible ${promo.id}: Discount ${currentDiscount}`
+        `[PromotionService] Eligible ${promo.id}: Discount ${currentDiscount}`,
       );
       eligiblePromotions.push({ promo, discount: currentDiscount });
     } else {

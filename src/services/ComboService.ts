@@ -4,27 +4,17 @@ import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { toSafeLocaleString } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "./StorageService";
 
 const COMBOS_COLLECTION = "combo_products";
-
 const BUCKET = adminStorageBucket;
 
 const uploadThumbnail = async (
   file: File,
-  id: string
+  id: string,
 ): Promise<ComboProduct["thumbnail"]> => {
-  const filePath = `combos/${id}/thumbnail/${file.name}`;
-  const fileRef = BUCKET.file(filePath);
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  await fileRef.save(buffer, {
-    metadata: {
-      contentType: file.type,
-    },
-  });
-
-  await fileRef.makePublic();
-  const url = `https://storage.googleapis.com/${BUCKET.name}/${filePath}`;
+  const filePath = `combos/${id}/thumbnail/thumb_${Date.now()}.webp`;
+  const url = await uploadCompressedImage(file, filePath);
 
   return {
     url: url,
@@ -34,7 +24,7 @@ const uploadThumbnail = async (
 
 export const getCombos = async (
   pageNumber: number = 1,
-  size: number = 20
+  size: number = 20,
 ): Promise<{ dataList: ComboProduct[]; rowCount: number }> => {
   try {
     let query: FirebaseFirestore.Query = adminFirestore
@@ -72,7 +62,7 @@ export const getCombos = async (
 
 export const createCombo = async (
   data: Omit<ComboProduct, "id" | "updatedAt" | "createdAt" | "thumbnail">,
-  file?: File
+  file?: File,
 ): Promise<ComboProduct> => {
   const docId = `combo-${nanoid(10)}`;
   const now = FieldValue.serverTimestamp();
@@ -100,7 +90,7 @@ export const createCombo = async (
 export const updateCombo = async (
   id: string,
   data: Partial<ComboProduct>,
-  file?: File
+  file?: File,
 ): Promise<void> => {
   const docRef = adminFirestore.collection(COMBOS_COLLECTION).doc(id);
   const docSnap = await docRef.get();
