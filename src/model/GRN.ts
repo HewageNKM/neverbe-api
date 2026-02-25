@@ -43,8 +43,8 @@ export const GRN_STATUS_LABELS: Record<GRNStatus, string> = {
   DRAFT: "Draft",
   SUBMITTED: "Submitted",
   APPROVED: "Approved",
-  REJECTED: "Rejected",
   COMPLETED: "Completed",
+  REJECTED: "Rejected",
 };
 
 export const GRN_STATUS_COLORS: Record<GRNStatus, string> = {

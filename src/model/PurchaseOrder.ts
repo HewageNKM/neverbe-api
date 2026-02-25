@@ -38,9 +38,9 @@ export interface PurchaseOrder {
 
 export const PO_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   DRAFT: "Draft",
-  SUBMITTED: "Sent to Supplier",
-  APPROVED: "Partially Received",
-  COMPLETED: "Fully Received",
+  SUBMITTED: "Sent",
+  APPROVED: "Partial",
+  COMPLETED: "Completed",
   REJECTED: "Cancelled",
 };
 
