@@ -4,6 +4,7 @@ import { Product } from "@/model/Product";
 import { POSOrder } from "@/model/POSTypes";
 import { Order } from "@/model/Order";
 import { addOrder } from "./OrderService";
+import { searchStockInventory } from "./AlgoliaService";
 import { AppError } from "@/utils/apiResponse";
 
 // ================================
@@ -360,20 +361,17 @@ export const getStockInventory = async (
   size: string,
 ): Promise<StockInventoryItem | null> => {
   try {
-    const stockSnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .where("productId", "==", productId)
-      .where("variantId", "==", variantId)
-      .where("size", "==", size)
-      .limit(1)
-      .get();
+    const filters = `stockId:"${stockId}" AND productId:"${productId}" AND variantId:"${variantId}" AND size:"${size}"`;
+    const { hits } = await searchStockInventory("", {
+      filters,
+      hitsPerPage: 1,
+    });
 
-    if (stockSnapshot.empty) {
+    if (hits.length === 0) {
       throw new AppError("Inventory item not found", 404);
     }
 
-    return stockSnapshot.docs[0].data() as StockInventoryItem;
+    return hits[0] as unknown as StockInventoryItem;
   } catch (error) {
     console.error("Error fetching stock inventory:", error);
     throw error;
@@ -386,15 +384,13 @@ export const getProductInventoryByStock = async (
   productId: string,
 ): Promise<StockInventoryItem[]> => {
   try {
-    const stockSnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .where("productId", "==", productId)
-      .get();
+    const filters = `stockId:"${stockId}" AND productId:"${productId}"`;
+    const { hits } = await searchStockInventory("", {
+      filters,
+      hitsPerPage: 100, // Reasonable limit for variants/sizes of a single product
+    });
 
-    if (stockSnapshot.empty) return [];
-
-    return stockSnapshot.docs.map((doc) => doc.data() as StockInventoryItem);
+    return hits as unknown as StockInventoryItem[];
   } catch (error) {
     console.error("Error fetching product inventory:", error);
     throw error;

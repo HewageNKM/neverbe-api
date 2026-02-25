@@ -2,6 +2,7 @@ import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
+import { searchStockInventory } from "./AlgoliaService";
 
 export const getDailySaleReport = async (from: string, to: string) => {
   try {
@@ -37,7 +38,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
     const getCOGS = (o: any) =>
       o.items.reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
-        0
+        0,
       );
 
     // ---------- MAIN SUMMARY ----------
@@ -56,19 +57,19 @@ export const getDailySaleReport = async (from: string, to: string) => {
     const totalDiscount = orders.reduce((s, o) => s + (o.discount || 0), 0);
     const totalTransactionFee = orders.reduce(
       (s, o) => s + (o.transactionFeeCharge || 0),
-      0
+      0,
     );
     const totalItemsSold = orders.reduce(
       (count, o) => count + o.items.reduce((c, i) => c + i.quantity, 0),
-      0
+      0,
     );
     const totalCouponDiscount = orders.reduce(
       (s, o) => s + (o.couponDiscount || 0),
-      0
+      0,
     );
     const totalPromotionDiscount = orders.reduce(
       (s, o) => s + (o.promotionDiscount || 0),
-      0
+      0,
     );
 
     // Combo Metrics
@@ -78,7 +79,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
         o.items
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + i.quantity, 0),
-      0
+      0,
     );
     const comboSales = orders.reduce(
       (s, o) =>
@@ -86,7 +87,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
         o.items
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.price || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboCOGS = orders.reduce(
       (s, o) =>
@@ -94,7 +95,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
         o.items
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.bPrice || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboDiscount = orders.reduce(
       (s, o) =>
@@ -102,10 +103,10 @@ export const getDailySaleReport = async (from: string, to: string) => {
         o.items
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.discount || 0), 0),
-      0
+      0,
     );
     const ordersWithCombos = orders.filter((o) =>
-      o.items.some((i: any) => i.isComboItem === true)
+      o.items.some((i: any) => i.isComboItem === true),
     ).length;
 
     // ---------- DAILY SUMMARY ----------
@@ -160,7 +161,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
       dailyMap[dateKey].transactionFee += o.transactionFeeCharge || 0;
       dailyMap[dateKey].itemsSold += o.items.reduce(
         (c, i) => c + i.quantity,
-        0
+        0,
       );
     });
 
@@ -172,7 +173,7 @@ export const getDailySaleReport = async (from: string, to: string) => {
     });
 
     const daily = Object.values(dailyMap).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
     return {
@@ -237,7 +238,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
     const getCOGS = (o: any) =>
       (o.items || []).reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
-        0
+        0,
       );
 
     // ---------- MAIN SUMMARY ----------
@@ -256,19 +257,19 @@ export const getMonthlySummary = async (from: string, to: string) => {
     const totalDiscount = orders.reduce((s, o) => s + (o.discount || 0), 0);
     const totalTransactionFee = orders.reduce(
       (s, o) => s + (o.transactionFeeCharge || 0),
-      0
+      0,
     );
     const totalItemsSold = orders.reduce(
       (count, o) => count + (o.items?.reduce((c, i) => c + i.quantity, 0) || 0),
-      0
+      0,
     );
     const totalCouponDiscount = orders.reduce(
       (s, o) => s + (o.couponDiscount || 0),
-      0
+      0,
     );
     const totalPromotionDiscount = orders.reduce(
       (s, o) => s + (o.promotionDiscount || 0),
-      0
+      0,
     );
 
     // Combo Metrics
@@ -278,7 +279,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + i.quantity, 0),
-      0
+      0,
     );
     const comboSales = orders.reduce(
       (s, o) =>
@@ -286,7 +287,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.price || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboCOGS = orders.reduce(
       (s, o) =>
@@ -294,7 +295,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.bPrice || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboDiscount = orders.reduce(
       (s, o) =>
@@ -302,10 +303,10 @@ export const getMonthlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.discount || 0), 0),
-      0
+      0,
     );
     const ordersWithCombos = orders.filter((o) =>
-      (o.items || []).some((i: any) => i.isComboItem === true)
+      (o.items || []).some((i: any) => i.isComboItem === true),
     ).length;
 
     // ---------- MONTHLY SUMMARY ----------
@@ -332,7 +333,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
       if (!date || isNaN(date.getTime())) return;
 
       const monthKey = `${date.getFullYear()}-${String(
-        date.getMonth() + 1
+        date.getMonth() + 1,
       ).padStart(2, "0")}`;
 
       if (!monthlyMap[monthKey]) {
@@ -377,7 +378,7 @@ export const getMonthlySummary = async (from: string, to: string) => {
     const monthly = Object.values(monthlyMap).sort(
       (a, b) =>
         new Date(a.month + "-01").getTime() -
-        new Date(b.month + "-01").getTime()
+        new Date(b.month + "-01").getTime(),
     );
 
     return {
@@ -445,7 +446,7 @@ export const getYearlySummary = async (from: string, to: string) => {
     const getCOGS = (o: any) =>
       (o.items || []).reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
-        0
+        0,
       );
 
     // ---------- MAIN SUMMARY ----------
@@ -464,19 +465,19 @@ export const getYearlySummary = async (from: string, to: string) => {
     const totalDiscount = orders.reduce((s, o) => s + (o.discount || 0), 0);
     const totalTransactionFee = orders.reduce(
       (s, o) => s + (o.transactionFeeCharge || 0),
-      0
+      0,
     );
     const totalItemsSold = orders.reduce(
       (count, o) => count + (o.items?.reduce((c, i) => c + i.quantity, 0) || 0),
-      0
+      0,
     );
     const totalCouponDiscount = orders.reduce(
       (s, o) => s + (o.couponDiscount || 0),
-      0
+      0,
     );
     const totalPromotionDiscount = orders.reduce(
       (s, o) => s + (o.promotionDiscount || 0),
-      0
+      0,
     );
 
     // Combo Metrics
@@ -486,7 +487,7 @@ export const getYearlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + i.quantity, 0),
-      0
+      0,
     );
     const comboSales = orders.reduce(
       (s, o) =>
@@ -494,7 +495,7 @@ export const getYearlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.price || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboCOGS = orders.reduce(
       (s, o) =>
@@ -502,7 +503,7 @@ export const getYearlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.bPrice || 0) * i.quantity, 0),
-      0
+      0,
     );
     const comboDiscount = orders.reduce(
       (s, o) =>
@@ -510,10 +511,10 @@ export const getYearlySummary = async (from: string, to: string) => {
         (o.items || [])
           .filter((i: any) => i.isComboItem === true)
           .reduce((c: number, i: any) => c + (i.discount || 0), 0),
-      0
+      0,
     );
     const ordersWithCombos = orders.filter((o) =>
-      (o.items || []).some((i: any) => i.isComboItem === true)
+      (o.items || []).some((i: any) => i.isComboItem === true),
     ).length;
 
     // ---------- YEARLY SUMMARY ----------
@@ -555,7 +556,7 @@ export const getYearlySummary = async (from: string, to: string) => {
 
       const yearKey = `${date.getFullYear()}`;
       const monthKey = `${date.getFullYear()}-${String(
-        date.getMonth() + 1
+        date.getMonth() + 1,
       ).padStart(2, "0")}`;
 
       if (!yearlyMap[yearKey]) {
@@ -591,7 +592,7 @@ export const getYearlySummary = async (from: string, to: string) => {
 
       // ---- MONTHLY TOTALS (INSIDE YEAR — FIXED) ----
       const monthlyIndex = yearlyMap[yearKey].monthly.findIndex(
-        (m) => m.month === monthKey
+        (m) => m.month === monthKey,
       );
 
       if (monthlyIndex === -1) {
@@ -638,7 +639,7 @@ export const getYearlySummary = async (from: string, to: string) => {
 
     // Sort years
     const yearly = Object.values(yearlyMap).sort(
-      (a, b) => parseInt(a.year) - parseInt(b.year)
+      (a, b) => parseInt(a.year) - parseInt(b.year),
     );
 
     // Sort months inside each year
@@ -646,7 +647,7 @@ export const getYearlySummary = async (from: string, to: string) => {
       y.monthly.sort(
         (a, b) =>
           new Date(a.month + "-01").getTime() -
-          new Date(b.month + "-01").getTime()
+          new Date(b.month + "-01").getTime(),
       );
     });
 
@@ -683,7 +684,7 @@ export const getYearlySummary = async (from: string, to: string) => {
 export const getTopSellingProducts = async (
   from?: string,
   to?: string,
-  threshold?: number
+  threshold?: number,
 ) => {
   try {
     let query = adminFirestore
@@ -708,7 +709,7 @@ export const getTopSellingProducts = async (
       const orderItems = order.items || [];
       const orderGrossSales = orderItems.reduce(
         (sum: number, i: any) => sum + (i.price || 0) * i.quantity,
-        0
+        0,
       );
       const orderLevelDiscount =
         (order.couponDiscount || 0) + (order.promotionDiscount || 0);
@@ -797,7 +798,7 @@ export const getSalesByCategory = async (from?: string, to?: string) => {
       const orderItems = order.items || [];
       const orderGrossSales = orderItems.reduce(
         (sum: number, i: any) => sum + (i.price || 0) * i.quantity,
-        0
+        0,
       );
       const orderLevelDiscount =
         (order.couponDiscount || 0) + (order.promotionDiscount || 0);
@@ -976,7 +977,7 @@ export const getSalesByBrand = async (from?: string, to?: string) => {
 export const getSalesVsDiscount = async (
   from?: string,
   to?: string,
-  groupBy: "day" | "month" = "day"
+  groupBy: "day" | "month" = "day",
 ) => {
   try {
     let query = adminFirestore
@@ -1006,7 +1007,7 @@ export const getSalesVsDiscount = async (
       let key = "";
       if (groupBy === "month") {
         key = `${dateObj.getFullYear()}-${String(
-          dateObj.getMonth() + 1
+          dateObj.getMonth() + 1,
         ).padStart(2, "0")}`;
       } else {
         key = dateObj.toISOString().split("T")[0]; // yyyy-mm-dd
@@ -1038,7 +1039,7 @@ export const getSalesVsDiscount = async (
 
     return {
       report: Object.values(reportMap).sort((a, b) =>
-        a.period > b.period ? 1 : -1
+        a.period > b.period ? 1 : -1,
       ),
     };
   } catch (error) {
@@ -1119,7 +1120,7 @@ export const getSalesByPaymentMethod = async (from?: string, to?: string) => {
 
     return {
       paymentMethods: Object.values(map).sort(
-        (a, b) => b.totalAmount - a.totalAmount
+        (a, b) => b.totalAmount - a.totalAmount,
       ),
     };
   } catch (err) {
@@ -1206,7 +1207,7 @@ export interface LiveStockItem {
 }
 
 export const fetchLiveStock = async (
-  stockId: string = "all"
+  stockId: string = "all",
 ): Promise<{
   stock: LiveStockItem[];
   total: number;
@@ -1217,29 +1218,23 @@ export const fetchLiveStock = async (
   };
 }> => {
   try {
-    let inventoryQuery: FirebaseFirestore.Query = adminFirestore
-      .collection("stock_inventory")
-      .orderBy("productId");
+    const filters = stockId !== "all" ? `stockId:"${stockId}"` : "";
 
-    if (stockId !== "all") {
-      inventoryQuery = inventoryQuery.where("stockId", "==", stockId);
-    }
+    // Algolia for efficient retrieval
+    const { hits, nbHits } = await searchStockInventory("", {
+      filters,
+      hitsPerPage: 1000, // Large enough for live stock report, or handle pagination if needed
+    });
 
-    const inventorySnap = await inventoryQuery.get();
-
-    const totalSnap =
-      stockId === "all"
-        ? await adminFirestore.collection("stock_inventory").get()
-        : await adminFirestore
-            .collection("stock_inventory")
-            .where("stockId", "==", stockId)
-            .get();
-
-    const total = totalSnap.size;
+    const inventoryDocs = hits;
+    const total = nbHits;
     const stockList: LiveStockItem[] = [];
-
-    const productIds = inventorySnap.docs.map((d) => d.data().productId);
-    const stockIds = inventorySnap.docs.map((d) => d.data().stockId);
+    const productIds = Array.from(
+      new Set(inventoryDocs.map((d: any) => d.productId)),
+    );
+    const stockIds = Array.from(
+      new Set(inventoryDocs.map((d: any) => d.stockId)),
+    );
 
     // Helper to split array into chunks of 30
     const chunkArray = <T>(arr: T[], chunkSize: number) =>
@@ -1279,8 +1274,8 @@ export const fetchLiveStock = async (
     let totalQuantity = 0;
     let totalValuation = 0;
 
-    inventorySnap.docs.forEach((d) => {
-      const data = d.data();
+    inventoryDocs.forEach((d: any) => {
+      const data = d;
       const product = productMap[data.productId];
       const stock = stockMap[data.stockId];
 
@@ -1294,7 +1289,7 @@ export const fetchLiveStock = async (
       totalValuation += valuation;
 
       stockList.push({
-        id: d.id,
+        id: d.objectID || d.id,
         productId: data.productId,
         productName: product?.name || "",
         variantId: data.variantId,
@@ -1340,7 +1335,7 @@ export interface LowStockItem {
 
 export const fetchLowStock = async (
   threshold: number = 10,
-  stockId: string = "all"
+  stockId: string = "all",
 ): Promise<{
   stock: LowStockItem[];
   total: number;
@@ -1389,7 +1384,7 @@ export const fetchLowStock = async (
     const batchFetch = async (
       collection: string,
       field: string,
-      ids: string[]
+      ids: string[],
     ) => {
       const chunks: string[][] = [];
       for (let i = 0; i < ids.length; i += 30)
@@ -1497,7 +1492,7 @@ const chunkArray = <T>(arr: T[], chunkSize: number): T[][] => {
 };
 
 export const fetchStockValuationByStock = async (
-  stockId: string
+  stockId: string,
 ): Promise<{ stock: StockValuationItem[]; summary: StockValuationSummary }> => {
   try {
     let inventoryQuery: FirebaseFirestore.Query =
@@ -1518,10 +1513,10 @@ export const fetchStockValuationByStock = async (
 
     const inventoryDocs = inventorySnap.docs;
     const productIds = Array.from(
-      new Set(inventoryDocs.map((d) => d.data().productId))
+      new Set(inventoryDocs.map((d) => d.data().productId)),
     );
     const stockIds = Array.from(
-      new Set(inventoryDocs.map((d) => d.data().stockId))
+      new Set(inventoryDocs.map((d) => d.data().stockId)),
     );
 
     // Fetch products in chunks of 30
@@ -1620,7 +1615,7 @@ export interface RevenueReport {
 
 export const getDailyRevenueReport = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<RevenueReport> => {
   const fromDate = new Date(from);
   const toDate = new Date(to);
@@ -1714,7 +1709,7 @@ export const getDailyRevenueReport = async (
           (o.total || 0) - (o.shippingFee || 0) - (o.transactionFeeCharge || 0);
         const cogs = o.items.reduce(
           (sum, item) => sum + (item.bPrice || 0) * (item.quantity || 0),
-          0
+          0,
         );
 
         totalSales += sales;
@@ -1815,7 +1810,7 @@ interface Order {
 
 export const getMonthlyRevenueReport = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<MonthlyRevenueReport> => {
   const fromDate = new Date(from);
   const toDate = new Date(to);
@@ -1845,7 +1840,7 @@ export const getMonthlyRevenueReport = async (
     const date = (order.createdAt as Timestamp).toDate();
 
     const monthStr = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
+      date.getMonth() + 1,
     ).padStart(2, "0")}`;
 
     if (!ordersByMonth[monthStr]) ordersByMonth[monthStr] = [];
@@ -1860,7 +1855,7 @@ export const getMonthlyRevenueReport = async (
     const date = (expense.createdAt as Timestamp).toDate();
 
     const monthStr = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
+      date.getMonth() + 1,
     ).padStart(2, "0")}`;
 
     if (expense.type.toLowerCase() === "income") {
@@ -1914,7 +1909,7 @@ export const getMonthlyRevenueReport = async (
         const cogs = o.items.reduce(
           (sum, item) =>
             sum + Number(item.bPrice || 0) * Number(item.quantity || 0),
-          0
+          0,
         );
 
         totalSales += sales;
@@ -2000,7 +1995,7 @@ export interface YearlyRevenueReport {
 
 export const getYearlyRevenueReport = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<YearlyRevenueReport> => {
   const fromDate = new Date(from);
   const toDate = new Date(to);
@@ -2092,7 +2087,7 @@ export const getYearlyRevenueReport = async (
         const cogs = o.items.reduce(
           (sum, item) =>
             sum + Number(item.bPrice || 0) * Number(item.quantity || 0),
-          0
+          0,
         );
 
         totalSales += sales;
@@ -2223,7 +2218,7 @@ export const getCashFlowReport = async (from: string, to: string) => {
     let totalCashIn = orders.reduce((s, o) => s + getCashIn(o), 0);
     const totalTransactionFees = orders.reduce(
       (s, o) => s + getTransactionFee(o),
-      0
+      0,
     );
     const totalExpenses = expenses.reduce((s, e) => s + getExpenseAmount(e), 0);
     let totalNetCashFlow = totalCashIn - totalTransactionFees - totalExpenses;
@@ -2283,7 +2278,7 @@ export const getCashFlowReport = async (from: string, to: string) => {
     });
 
     const daily = Object.values(dailyMap).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
     //To be removed
@@ -2353,11 +2348,11 @@ export interface ProfitLossStatement {
  */
 export const getProfitLossStatement = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<ProfitLossStatement> => {
   try {
     console.log(
-      `[ReportService] Generating P&L Statement from ${from} to ${to}`
+      `[ReportService] Generating P&L Statement from ${from} to ${to}`,
     );
 
     const startTimestamp = Timestamp.fromDate(new Date(from));
@@ -2393,7 +2388,7 @@ export const getProfitLossStatement = async (
     const productDocs = await Promise.all(
       Array.from(productIds)
         .filter((id) => id && id.trim() !== "")
-        .map((id) => adminFirestore.collection("products").doc(id).get())
+        .map((id) => adminFirestore.collection("products").doc(id).get()),
     );
     const productCostMap = new Map<string, number>();
     productDocs.forEach((doc) => {
@@ -2446,7 +2441,7 @@ export const getProfitLossStatement = async (
       const amount = Number(expense.amount || 0);
       expensesByCategory.set(
         category,
-        (expensesByCategory.get(category) || 0) + amount
+        (expensesByCategory.get(category) || 0) + amount,
       );
     });
 
@@ -2456,7 +2451,7 @@ export const getProfitLossStatement = async (
 
     const totalExpenses = expenseCategoryArray.reduce(
       (sum, e) => sum + e.amount,
-      0
+      0,
     );
 
     // Calculate profit
@@ -2534,11 +2529,11 @@ export interface ExpenseReport {
 export const getExpenseReport = async (
   from: string,
   to: string,
-  category?: string
+  category?: string,
 ): Promise<ExpenseReport> => {
   try {
     console.log(
-      `[ReportService] Generating Expense Report from ${from} to ${to}`
+      `[ReportService] Generating Expense Report from ${from} to ${to}`,
     );
 
     const startTimestamp = Timestamp.fromDate(new Date(from));
@@ -2577,7 +2572,7 @@ export const getExpenseReport = async (
       total += e.amount;
       categoryTotals.set(
         e.category,
-        (categoryTotals.get(e.category) || 0) + e.amount
+        (categoryTotals.get(e.category) || 0) + e.amount,
       );
     });
 
@@ -2592,7 +2587,7 @@ export const getExpenseReport = async (
     return {
       period: { from, to },
       expenses: expenses.sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       ),
       summary: {
         total,
@@ -2633,11 +2628,11 @@ export interface CustomerAnalytics {
  */
 export const getCustomerAnalytics = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<CustomerAnalytics> => {
   try {
     console.log(
-      `[ReportService] Generating Customer Analytics from ${from} to ${to}`
+      `[ReportService] Generating Customer Analytics from ${from} to ${to}`,
     );
 
     const startTimestamp = Timestamp.fromDate(new Date(from));
@@ -2735,7 +2730,7 @@ export const getCustomerAnalytics = async (
     // Acquisition by source
     const totalSourceCount = Array.from(sourceCounts.values()).reduce(
       (a, b) => a + b,
-      0
+      0,
     );
     const acquisitionBySource = Array.from(sourceCounts.entries())
       .map(([source, count]) => ({
@@ -2798,7 +2793,7 @@ export interface TaxReport {
  */
 export const getTaxReport = async (
   from: string,
-  to: string
+  to: string,
 ): Promise<
   TaxReport & {
     taxSettings: { taxEnabled: boolean; taxName: string; taxRate: number };
@@ -2887,7 +2882,7 @@ export const getTaxReport = async (
     return {
       period: { from, to },
       transactions: transactions.sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       ),
       summary: {
         totalOrders: ordersSnapshot.size,

@@ -7,6 +7,7 @@ import {
 } from "./IntegrityService";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
+import { searchOrders } from "./AlgoliaService";
 import { InventoryItem } from "@/model/InventoryItem";
 import { Product } from "@/model/Product";
 import { toSafeLocaleString } from "./UtilService";
@@ -26,65 +27,61 @@ export const getOrders = async (
   to?: string,
   status?: string,
   payment?: string,
-  orderId?: string
+  orderId?: string,
+  source?: string,
+  stockId?: string,
+  paymentMethod?: string,
 ) => {
   try {
-    const offset = (page - 1) * size;
-    let query = adminFirestore.collection(ORDERS_COLLECTION);
+    const filters: string[] = [];
+
     if (from && to) {
-      const startTimestamp = Timestamp.fromDate(new Date(from));
-      const endTimestamp = Timestamp.fromDate(new Date(to));
-      query = query.where("createdAt", ">=", startTimestamp);
-      query = query.where("createdAt", "<=", endTimestamp);
+      const startDate = new Date(from);
+      const endDate = new Date(to);
+      endDate.setHours(23, 59, 59, 999);
+
+      const start = startDate.getTime();
+      const end = endDate.getTime();
+
+      filters.push(`createdAt >= ${start} AND createdAt <= ${end}`);
     }
-    if (status) {
-      query = query.where("status", "==", status);
-    }
-    if (orderId) {
-      query = query.where("orderId", "==", orderId);
-    }
-    if (payment) {
-      query = query.where("paymentStatus", "==", payment);
-    }
-    const total = (await query.get()).size;
-    const ordersSnapshot = await query
-      .orderBy("createdAt", "desc")
-      .limit(size)
-      .offset(offset)
-      .get();
+    if (status) filters.push(`status:"${status}"`);
+    if (orderId) filters.push(`orderId:"${orderId}"`);
+    if (payment) filters.push(`paymentStatus:"${payment}"`);
+    if (source) filters.push(`from:"${source}"`);
+    if (stockId) filters.push(`stockId:"${stockId}"`);
+    if (paymentMethod) filters.push(`paymentMethod:"${paymentMethod}"`);
+    const { hits, nbHits } = await searchOrders(orderId || "", {
+      page: page - 1,
+      hitsPerPage: size,
+      filters: filters.join(" AND "),
+    });
 
     const orders: Order[] = [];
-    for (const doc of ordersSnapshot.docs) {
-      const data = doc.data() as Order;
+    for (const hit of hits as any[]) {
       const integrityResult = await validateDocumentIntegrity(
         ORDERS_COLLECTION,
-        doc.id
+        hit.objectID || hit.id,
       );
 
       const order: Order = {
-        ...data,
-        orderId: doc.id,
+        ...hit,
+        userId: hit.userId || null, // Ensure userId is at least null to satisfy required field
+        orderId: hit.objectID || hit.id,
         integrity: integrityResult,
-        customer: data.customer
+        customer: hit.customer
           ? {
-              ...data.customer,
-              updatedAt: data.customer.updatedAt
-                ? toSafeLocaleString(data.customer.updatedAt)
-                : null,
+              ...hit.customer,
+              // Frontend expects strings, Algolia usually stores serialized versions
             }
           : null,
-        createdAt: toSafeLocaleString(data.createdAt),
-        updatedAt: toSafeLocaleString(data.updatedAt),
-        restockedAt: data.restockedAt
-          ? toSafeLocaleString(data.restockedAt)
-          : null,
-      };
+      } as unknown as Order;
       orders.push(order);
     }
-    console.log(`Fetched ${orders.length} orders on page ${page}`);
+    console.log(`Fetched ${orders.length} orders from Algolia on page ${page}`);
     return {
       dataList: orders,
-      total: total,
+      total: nbHits,
     };
   } catch (error: any) {
     console.error(error);
@@ -109,7 +106,7 @@ export const getOrder = async (orderId: string): Promise<Order> => {
     // 2. Passed 'adminFirestore' and used the doc.id for the check
     const integrity = await validateDocumentIntegrity(
       ORDERS_COLLECTION,
-      doc.id
+      doc.id,
     );
 
     return {
@@ -149,7 +146,7 @@ export const updateOrder = async (order: Order, orderId: string) => {
     if (existingOrder.paymentStatus?.toLowerCase() === "refunded") {
       throw new AppError(
         `Order with ID ${orderId} is already refunded can't proceed with update`,
-        400
+        400,
       );
     }
 
@@ -176,7 +173,7 @@ export const updateOrder = async (order: Order, orderId: string) => {
     if (!updatedOrderData) {
       throw new AppError(
         `Order with ID ${orderId} not found after update`,
-        404
+        404,
       );
     }
 
@@ -208,15 +205,20 @@ export const addOrder = async (order: Partial<Order>) => {
 
   const orderRef = adminFirestore.collection("orders").doc(order.orderId);
   const now = admin.firestore.Timestamp.now();
-  let orderData: Order = { ...order, createdAt: now, updatedAt: now };
+  let orderData: Order = {
+    ...order,
+    userId: order.userId || null,
+    createdAt: now,
+    updatedAt: now,
+  } as Order;
 
   try {
     const productRefs = order.items.map((i) =>
-      adminFirestore.collection("products").doc(i.itemId)
+      adminFirestore.collection("products").doc(i.itemId),
     );
     const productSnaps = await adminFirestore.getAll(...productRefs);
     const productMap = new Map(
-      productSnaps.map((snap) => [snap.id, snap.data() as Product])
+      productSnaps.map((snap) => [snap.id, snap.data() as Product]),
     );
 
     // Set bPrice on items from server-side product data (never trust frontend)
@@ -251,11 +253,11 @@ export const addOrder = async (order: Partial<Order>) => {
         order.couponCode,
         order.customer?.uid || "guest",
         cartTotal,
-        cartItems
+        cartItems,
       );
       if (!validation.valid) {
         console.warn(
-          `Invalid coupon used in order ${order.orderId}: ${validation.message}`
+          `Invalid coupon used in order ${order.orderId}: ${validation.message}`,
         );
         // Option: Throw error or proceed without discount?
         // Throwing error is safer.
@@ -276,7 +278,7 @@ export const addOrder = async (order: Partial<Order>) => {
       }, 0);
 
       console.log(
-        `[OrderService] Calculating promotions... CartTotal: ${cartTotal}, FinalDiscount: ${finalDiscount}`
+        `[OrderService] Calculating promotions... CartTotal: ${cartTotal}, FinalDiscount: ${finalDiscount}`,
       );
 
       const promoResult = await calculateCartDiscount(
@@ -288,7 +290,7 @@ export const addOrder = async (order: Partial<Order>) => {
           discount: i.discount,
         })),
         cartTotal,
-        order.customer?.uid || null // Pass userId for CUSTOMER_TAG validation
+        order.customer?.uid || null, // Pass userId for CUSTOMER_TAG validation
       );
 
       console.log(`[OrderService] PromoResult:`, JSON.stringify(promoResult));
@@ -315,13 +317,13 @@ export const addOrder = async (order: Partial<Order>) => {
       // Calculate item-level discounts (combo discounts, sale prices)
       const itemDiscounts = order.items.reduce(
         (acc, item) => acc + (item.discount || 0),
-        0
+        0,
       );
 
       // --- COMBO DISCOUNT VALIDATION ---
       // Validate combo discounts by checking against stored combo prices
       const comboItems = order.items.filter(
-        (item) => item.itemType === "combo" && item.comboId
+        (item) => item.itemType === "combo" && item.comboId,
       );
       if (comboItems.length > 0) {
         // Group by comboId
@@ -355,17 +357,17 @@ export const addOrder = async (order: Partial<Order>) => {
           // Calculate claimed discount from frontend
           const claimedTotalDiscount = items.reduce(
             (acc, item) => acc + (item.discount || 0),
-            0
+            0,
           );
 
           // Allow small tolerance for rounding
           if (Math.abs(claimedTotalDiscount - expectedTotalDiscount) > 2) {
             console.error(
-              `🚨 Combo discount mismatch! Combo: ${comboId}, Expected: ${expectedTotalDiscount}, Claimed: ${claimedTotalDiscount}`
+              `🚨 Combo discount mismatch! Combo: ${comboId}, Expected: ${expectedTotalDiscount}, Claimed: ${claimedTotalDiscount}`,
             );
             throw new AppError(
               `Invalid combo discount detected. Please refresh and try again.`,
-              400
+              400,
             );
           }
         }
@@ -375,7 +377,7 @@ export const addOrder = async (order: Partial<Order>) => {
       // --- DYNAMIC SHIPPING CALCULATION ---
       const totalItems = order.items.reduce(
         (acc, item) => acc + item.quantity,
-        0
+        0,
       );
 
       // 1. Calculate Total Weight
@@ -398,11 +400,11 @@ export const addOrder = async (order: Partial<Order>) => {
 
       if (!rulesSnapshot.empty) {
         const rules = rulesSnapshot.docs.map(
-          (doc) => doc.data() as ShippingRule
+          (doc) => doc.data() as ShippingRule,
         );
         // Find matching rule
         const match = rules.find(
-          (r) => totalWeight >= r.minWeight && totalWeight < r.maxWeight
+          (r) => totalWeight >= r.minWeight && totalWeight < r.maxWeight,
         );
 
         if (match) {
@@ -446,8 +448,8 @@ export const addOrder = async (order: Partial<Order>) => {
           totalItems === 0
             ? 0
             : totalItems === 1
-            ? SHIPPING_FLAT_RATE_1
-            : SHIPPING_FLAT_RATE_2;
+              ? SHIPPING_FLAT_RATE_1
+              : SHIPPING_FLAT_RATE_2;
       }
 
       // Calculate payment fee (percentage of subtotal)
@@ -456,7 +458,7 @@ export const addOrder = async (order: Partial<Order>) => {
         ? (order.fee / subtotalBeforeFees) * 100
         : 0;
       const serverPaymentFee = parseFloat(
-        ((subtotalBeforeFees * paymentFeePercent) / 100).toFixed(2)
+        ((subtotalBeforeFees * paymentFeePercent) / 100).toFixed(2),
       );
 
       // Calculate server total
@@ -474,7 +476,7 @@ export const addOrder = async (order: Partial<Order>) => {
       let serverTotal = serverTotalWithPromo;
       const diffWithPromo = Math.abs(serverTotalWithPromo - frontendTotal);
       const diffWithoutPromo = Math.abs(
-        serverTotalWithoutPromo - frontendTotal
+        serverTotalWithoutPromo - frontendTotal,
       );
 
       if (diffWithoutPromo <= TOLERANCE) {
@@ -484,7 +486,7 @@ export const addOrder = async (order: Partial<Order>) => {
       }
 
       console.log(
-        `[OrderService] Server Total Calc: Subtotal=${serverSubtotal}, Coupon=${serverCouponDiscount}, Promo=${promotionDiscount} => Total=${serverTotal} (Frontend=${frontendTotal})`
+        `[OrderService] Server Total Calc: Subtotal=${serverSubtotal}, Coupon=${serverCouponDiscount}, Promo=${promotionDiscount} => Total=${serverTotal} (Frontend=${frontendTotal})`,
       );
 
       // Compare with frontend total (already declared above)
@@ -492,18 +494,18 @@ export const addOrder = async (order: Partial<Order>) => {
 
       if (difference > TOLERANCE) {
         console.error(
-          `🚨 Total mismatch! Server: ${serverTotal}, Frontend: ${frontendTotal}, Diff: ${difference}`
+          `🚨 Total mismatch! Server: ${serverTotal}, Frontend: ${frontendTotal}, Diff: ${difference}`,
         );
         console.error(
-          `Breakdown: items=${itemsTotal}, itemDiscounts=${itemDiscounts}, shipping=${serverShippingFee}, fee=${serverPaymentFee}, coupon=${serverCouponDiscount}, promotion=${promotionDiscount}`
+          `Breakdown: items=${itemsTotal}, itemDiscounts=${itemDiscounts}, shipping=${serverShippingFee}, fee=${serverPaymentFee}, coupon=${serverCouponDiscount}, promotion=${promotionDiscount}`,
         );
         throw new AppError(
           `Order total mismatch. Expected Rs. ${serverTotal.toFixed(
-            2
+            2,
           )}, received Rs. ${frontendTotal.toFixed(
-            2
+            2,
           )}. Please refresh and try again.`,
-          400
+          400,
         );
       }
 
@@ -518,13 +520,13 @@ export const addOrder = async (order: Partial<Order>) => {
 
     if (Math.abs(frontendCouponDiscount - finalDiscount) > 1) {
       console.warn(
-        `⚠️ Coupon discount mismatch: frontend=${frontendCouponDiscount}, server=${finalDiscount}`
+        `⚠️ Coupon discount mismatch: frontend=${frontendCouponDiscount}, server=${finalDiscount}`,
       );
     }
 
     if (Math.abs(frontendPromotionDiscount - promotionDiscount) > 1) {
       console.warn(
-        `⚠️ Promotion discount mismatch: frontend=${frontendPromotionDiscount}, server=${promotionDiscount}`
+        `⚠️ Promotion discount mismatch: frontend=${frontendPromotionDiscount}, server=${promotionDiscount}`,
       );
     }
 
@@ -563,11 +565,11 @@ export const addOrder = async (order: Partial<Order>) => {
 
               const newInvQty = Math.max(
                 (invData.quantity ?? 0) - item.quantity,
-                0
+                0,
               );
               const newTotalStock = Math.max(
                 (prodData.totalStock ?? 0) - item.quantity,
-                0
+                0,
               );
 
               batch.update(invDoc.ref, { quantity: newInvQty });
@@ -577,16 +579,16 @@ export const addOrder = async (order: Partial<Order>) => {
                   totalStock: newTotalStock,
                   inStock: newTotalStock > 0,
                   updatedAt: now,
-                }
+                },
               );
-            })
+            }),
           );
 
           batch.set(orderRef, orderData);
           await batch.commit();
 
           console.log(
-            `🏬 Store order ${order.orderId} committed (attempt ${attempt})`
+            `🏬 Store order ${order.orderId} committed (attempt ${attempt})`,
           );
           break;
         } catch (err) {
@@ -653,7 +655,7 @@ export const addOrder = async (order: Partial<Order>) => {
                   totalStock: newTotalStock,
                   inStock: newTotalStock > 0,
                   updatedAt: now,
-                }
+                },
               );
             }
 
@@ -669,7 +671,7 @@ export const addOrder = async (order: Partial<Order>) => {
           });
 
           console.log(
-            `🌐 Website order ${order.orderId} committed (attempt ${attempt})`
+            `🌐 Website order ${order.orderId} committed (attempt ${attempt})`,
           );
 
           // Track Coupon Usage AFTER successful commit
@@ -678,7 +680,7 @@ export const addOrder = async (order: Partial<Order>) => {
               appliedCouponId,
               order.customer?.uid || "guest",
               order.orderId,
-              finalDiscount
+              finalDiscount,
             );
           }
 

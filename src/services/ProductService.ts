@@ -7,14 +7,14 @@ import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
 import { PopularItem } from "@/model/PopularItem";
 import { Timestamp } from "firebase-admin/firestore";
+import { searchProducts } from "./AlgoliaService";
+import { AppError } from "@/utils/apiResponse";
 
 const PRODUCTS_COLLECTION = "products";
 const BUCKET = adminStorageBucket;
-
-// ... (uploadThumbnail function remains unchanged) ...
 const uploadThumbnail = async (
   file: File,
-  id: string
+  id: string,
 ): Promise<Product["thumbnail"]> => {
   const filePath = `products/${id}/thumbnail/${file.name}`;
   const fileRef = BUCKET.file(filePath);
@@ -36,8 +36,6 @@ const uploadThumbnail = async (
   };
 };
 
-import { AppError } from "@/utils/apiResponse";
-
 // ... (previous code)
 
 /**
@@ -58,7 +56,7 @@ export const addProducts = async (product: Partial<Product>, file: File) => {
   // Denormalize sizes from variants for search
   const allSizes = new Set<string>();
   (product.variants || []).forEach((v) =>
-    v.sizes?.forEach((s) => allSizes.add(s))
+    v.sizes?.forEach((s) => allSizes.add(s)),
   );
 
   const newProductDocument: any = {
@@ -90,7 +88,7 @@ export const addProducts = async (product: Partial<Product>, file: File) => {
 export const updateProduct = async (
   id: string,
   product: Partial<Product>,
-  file?: File | null
+  file?: File | null,
 ) => {
   // Build tags from brand and category (no AI)
   const tags: string[] = [];
@@ -100,7 +98,7 @@ export const updateProduct = async (
   // Denormalize sizes from variants for search
   const allSizes = new Set<string>();
   (product.variants || []).forEach((v) =>
-    v.sizes?.forEach((s) => allSizes.add(s))
+    v.sizes?.forEach((s) => allSizes.add(s)),
   );
 
   let thumbnail = product.thumbnail;
@@ -156,73 +154,40 @@ export const getProducts = async (
   brand?: string,
   category?: string,
   status?: boolean,
-  listing?: boolean
+  listing?: boolean,
 ): Promise<{ dataList: Omit<Product, "isDeleted">[]; rowCount: number }> => {
   try {
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection(PRODUCTS_COLLECTION)
-      .where("isDeleted", "==", false);
-    let countQuery: FirebaseFirestore.Query = adminFirestore
-      .collection(PRODUCTS_COLLECTION)
-      .where("isDeleted", "==", false);
+    const filters: string[] = ["isDeleted:false"];
 
-    // Filters
-    if (brand) {
-      query = query.where("brand", "==", brand);
-      countQuery = countQuery.where("brand", "==", brand);
-    }
-    if (category) {
-      query = query.where("category", "==", category);
-      countQuery = countQuery.where("category", "==", category);
-    }
-    if (typeof status === "boolean") {
-      query = query.where("status", "==", status);
-      countQuery = countQuery.where("status", "==", status);
-    }
-    if (typeof listing === "boolean") {
-      query = query.where("listing", "==", listing);
-      countQuery = countQuery.where("listing", "==", listing);
-    }
+    if (brand) filters.push(`brand:"${brand}"`);
+    if (category) filters.push(`category:"${category}"`);
+    if (typeof status === "boolean") filters.push(`status:${status}`);
+    if (typeof listing === "boolean") filters.push(`listing:${listing}`);
 
-    if (search) {
-      const searchLower = search.toLowerCase();
-      query = query
-        .orderBy("nameLower")
-        .startAt(searchLower)
-        .endAt(searchLower + "\uf8ff");
+    const { hits, nbHits } = await searchProducts(search || "", {
+      page: pageNumber - 1,
+      hitsPerPage: size,
+      filters: filters.join(" AND "),
+    });
 
-      countQuery = countQuery
-        .orderBy("nameLower")
-        .startAt(searchLower)
-        .endAt(searchLower + "\uf8ff");
-    }
-
-    // Count total rows
-    const rowCount = (await countQuery.get()).size;
-
-    // Pagination
-    const offset = (pageNumber - 1) * size;
-    const productsSnapshot = await query.offset(offset).limit(size).get();
-
-    const products = productsSnapshot.docs.map((doc) => {
-      const data = doc.data() as any;
-      const activeVariants = (data.variants || []).filter(
-        (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted
+    const products = hits.map((hit: any) => {
+      const activeVariants = (hit.variants || []).filter(
+        (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
       );
 
       return {
-        ...data,
-        productId: doc.id,
+        ...hit,
+        productId: hit.objectID || hit.id,
         variants: activeVariants,
-        createdAt: toSafeLocaleString(data.createdAt),
-        updatedAt: toSafeLocaleString(data.updatedAt),
+        createdAt: hit.createdAt, // Switched to raw as per previous refinement logic
+        updatedAt: hit.updatedAt,
       } as Omit<Product, "isDeleted">;
     });
 
-    return { dataList: products, rowCount };
+    return { dataList: products, rowCount: nbHits };
   } catch (error) {
     console.error("Get Products Error:", error);
-    throw error; // Rethrow to let route handle
+    throw error;
   }
 };
 
@@ -237,7 +202,7 @@ export const getProductById = async (id: string): Promise<Product> => {
 
   const data = docSnap.data() as any;
   const activeVariants = (data.variants || []).filter(
-    (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted
+    (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
   );
 
   return {
@@ -275,7 +240,7 @@ export const getProductDropdown = async () => {
 export const getPopularProducts = async (
   startDate: string,
   endDate: string,
-  size: number
+  size: number,
 ): Promise<PopularItem[]> => {
   try {
     // Construct dates using the explicit year provided
@@ -348,7 +313,7 @@ export const getPopularProducts = async (
         } catch (err) {
           console.error(`Failed to fetch product details for ${itemId}`, err);
         }
-      })
+      }),
     );
 
     console.log(`Returning ${popularItems.length} popular items`);

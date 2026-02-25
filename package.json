@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "algoliasearch": "^5.49.1",
     "dayjs": "^1.11.19",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.6.1",

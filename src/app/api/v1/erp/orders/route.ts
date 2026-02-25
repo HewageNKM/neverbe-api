@@ -20,6 +20,9 @@ export const GET = async (req: NextRequest) => {
     const status = url.searchParams.get("status");
     const payment = url.searchParams.get("payment");
     const orderId = url.searchParams.get("search");
+    const source = url.searchParams.get("source");
+    const stockId = url.searchParams.get("stockId");
+    const paymentMethod = url.searchParams.get("paymentMethod");
 
     console.log(`Page number: ${pageNumber}, Size: ${size}`);
     const { dataList, total } = await getOrders(
@@ -29,7 +32,10 @@ export const GET = async (req: NextRequest) => {
       toData || undefined,
       status || undefined,
       payment || undefined,
-      orderId || undefined
+      orderId || undefined,
+      source || undefined,
+      stockId || undefined,
+      paymentMethod || undefined,
     );
     console.log(`Orders: ${dataList.length}`);
     // Return a response with the orders

@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const allowedOrigins = [
+  "https://www.erp.neverbe.lk",
   "https://erp.neverbe.lk",
+  "https://www.pos.neverbe.lk",
   "https://pos.neverbe.lk",
   "https://www.neverbe.lk",
-  "http://localhost:3000",
+  "https://neverbe.lk",
 ];
 
 export function proxy(request: NextRequest) {
