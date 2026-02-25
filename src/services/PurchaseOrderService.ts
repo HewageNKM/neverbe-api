@@ -15,7 +15,7 @@ const COLLECTION = "purchase_orders";
 const generatePONumber = async (): Promise<string> => {
   const today = new Date();
   const prefix = `PO-${today.getFullYear()}${String(
-    today.getMonth() + 1
+    today.getMonth() + 1,
   ).padStart(2, "0")}`;
 
   const snapshot = await adminFirestore
@@ -40,7 +40,7 @@ const generatePONumber = async (): Promise<string> => {
  */
 export const getPurchaseOrders = async (
   status?: PurchaseOrderStatus,
-  supplierId?: string
+  supplierId?: string,
 ): Promise<PurchaseOrder[]> => {
   try {
     let query: FirebaseFirestore.Query = adminFirestore.collection(COLLECTION);
@@ -68,7 +68,7 @@ export const getPurchaseOrders = async (
  * Get PO by ID
  */
 export const getPurchaseOrderById = async (
-  id: string
+  id: string,
 ): Promise<PurchaseOrder> => {
   try {
     const doc = await adminFirestore.collection(COLLECTION).doc(id).get();
@@ -86,7 +86,7 @@ export const getPurchaseOrderById = async (
  * Create new purchase order
  */
 export const createPurchaseOrder = async (
-  po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt" | "updatedAt">
+  po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt" | "updatedAt">,
 ): Promise<PurchaseOrder> => {
   try {
     const poNumber = await generatePONumber();
@@ -105,7 +105,7 @@ export const createPurchaseOrder = async (
       poNumber,
       items,
       totalAmount,
-      status: po.status || "draft",
+      status: po.status || "DRAFT",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -128,7 +128,7 @@ export const createPurchaseOrder = async (
  */
 export const updatePurchaseOrder = async (
   id: string,
-  updates: Partial<PurchaseOrder>
+  updates: Partial<PurchaseOrder>,
 ): Promise<PurchaseOrder> => {
   try {
     const docRef = adminFirestore.collection(COLLECTION).doc(id);
@@ -146,7 +146,7 @@ export const updatePurchaseOrder = async (
     if (updateData.items) {
       updateData.totalAmount = updateData.items.reduce(
         (sum, item) => sum + item.totalCost,
-        0
+        0,
       );
     }
 
@@ -168,7 +168,7 @@ export const updatePurchaseOrder = async (
  */
 export const updatePOStatus = async (
   id: string,
-  status: PurchaseOrderStatus
+  status: PurchaseOrderStatus,
 ): Promise<PurchaseOrder> => {
   return updatePurchaseOrder(id, { status });
 };
@@ -183,7 +183,7 @@ export const updateReceivedQuantities = async (
     variantId?: string;
     size: string;
     quantity: number;
-  }[]
+  }[],
 ): Promise<PurchaseOrder> => {
   try {
     const po = await getPurchaseOrderById(id);
@@ -195,7 +195,7 @@ export const updateReceivedQuantities = async (
         (r) =>
           r.productId === item.productId &&
           r.variantId === item.variantId &&
-          r.size === item.size
+          r.size === item.size,
       );
 
       if (received) {
@@ -209,24 +209,24 @@ export const updateReceivedQuantities = async (
 
     // Determine new status
     const allReceived = updatedItems.every(
-      (item) => (item.receivedQuantity || 0) >= item.quantity
+      (item) => (item.receivedQuantity || 0) >= item.quantity,
     );
     const anyReceived = updatedItems.some(
-      (item) => (item.receivedQuantity || 0) > 0
+      (item) => (item.receivedQuantity || 0) > 0,
     );
 
     let newStatus: PurchaseOrderStatus = po.status;
     if (allReceived) {
-      newStatus = "received";
+      newStatus = "COMPLETED";
     } else if (anyReceived) {
-      newStatus = "partial";
+      newStatus = "APPROVED";
     }
 
     return updatePurchaseOrder(id, { items: updatedItems, status: newStatus });
   } catch (error) {
     console.error(
       "[PurchaseOrderService] Error updating received quantities:",
-      error
+      error,
     );
     throw error;
   }
@@ -239,7 +239,7 @@ export const deletePurchaseOrder = async (id: string): Promise<void> => {
   try {
     const po = await getPurchaseOrderById(id); // Will throw 404 if not found
 
-    if (po.status !== "draft") {
+    if (po.status !== "DRAFT") {
       throw new AppError("Only draft POs can be deleted", 400);
     }
 
@@ -257,7 +257,7 @@ export const getPendingPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
   try {
     const snapshot = await adminFirestore
       .collection(COLLECTION)
-      .where("status", "in", ["sent", "partial"])
+      .where("status", "in", ["SUBMITTED", "APPROVED"])
       .get();
 
     return snapshot.docs.map((doc) => ({

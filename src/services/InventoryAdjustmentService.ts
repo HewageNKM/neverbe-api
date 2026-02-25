@@ -1,6 +1,5 @@
 import { adminFirestore, adminAuth } from "@/firebase/firebaseAdmin";
 import {
-  ActionBy,
   InventoryAdjustment,
   AdjustmentItem,
   AdjustmentType,
@@ -161,8 +160,8 @@ export const createAdjustment = async (
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // We do NOT update inventory here anymore. Only on APPROVAL.
-    if (status === "APPROVED") {
+    // We do NOT update inventory here anymore. Only on COMPLETION.
+    if (status === "COMPLETED") {
       await updateInventoryFromAdjustment(adjustment.items, adjustment.type);
     }
 
@@ -200,20 +199,20 @@ export const updateAdjustmentStatus = async (
 
     const currentData = doc.data() as InventoryAdjustment;
 
-    if (currentData.status === "APPROVED") {
-      throw new AppError("Cannot change status of an APPROVED adjustment", 400);
+    if (currentData.status === "COMPLETED") {
+      throw new AppError("Cannot change status of a COMPLETED adjustment", 400);
     }
 
     const updates: Record<string, any> = {
       status,
       updatedAt: FieldValue.serverTimestamp(),
-      adjustedBy: userId, // Track who approved/rejected
+      adjustedBy: userId, // Track who approved/rejected/completed
     };
 
     await docRef.update(updates);
 
-    // If approved, update inventory
-    if (status === "APPROVED") {
+    // If completed, update inventory
+    if (status === "COMPLETED") {
       await updateInventoryFromAdjustment(currentData.items, currentData.type);
     }
   } catch (error) {

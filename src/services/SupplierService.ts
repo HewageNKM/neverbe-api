@@ -8,21 +8,39 @@ const COLLECTION = "suppliers";
 /**
  * Get all suppliers
  */
-export const getSuppliers = async (status?: boolean): Promise<Supplier[]> => {
+export const getSuppliers = async (
+  status?: boolean | "active" | "inactive",
+  search?: string,
+): Promise<Supplier[]> => {
   try {
     let query: FirebaseFirestore.Query = adminFirestore
       .collection(COLLECTION)
       .where("isDeleted", "==", false);
 
-    if (typeof status === "boolean") {
-      query = query.where("status", "==", status);
+    if (status !== undefined) {
+      const statusBool =
+        typeof status === "boolean" ? status : status === "active";
+      query = query.where("status", "==", statusBool);
     }
 
     const snapshot = await query.get();
-    return snapshot.docs.map((doc) => ({
+    let suppliers = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as Supplier[];
+
+    if (search) {
+      const lowSearch = search.toLowerCase();
+      suppliers = suppliers.filter(
+        (s) =>
+          s.name.toLowerCase().includes(lowSearch) ||
+          s.email?.toLowerCase().includes(lowSearch) ||
+          s.phone?.includes(search) ||
+          s.contactPerson?.toLowerCase().includes(lowSearch),
+      );
+    }
+
+    return suppliers;
   } catch (error) {
     console.error("[SupplierService] Error fetching suppliers:", error);
     throw error;
@@ -56,7 +74,7 @@ export const getSupplierById = async (id: string): Promise<Supplier> => {
  * Create supplier
  */
 export const createSupplier = async (
-  data: Omit<Supplier, "id" | "createdAt" | "updatedAt">
+  data: Omit<Supplier, "id" | "createdAt" | "updatedAt">,
 ): Promise<Supplier> => {
   try {
     const id = `sup-${nanoid(8)}`;
@@ -85,7 +103,7 @@ export const createSupplier = async (
  */
 export const updateSupplier = async (
   id: string,
-  updates: Partial<Supplier>
+  updates: Partial<Supplier>,
 ): Promise<Supplier> => {
   try {
     const docRef = adminFirestore.collection(COLLECTION).doc(id);
@@ -94,9 +112,9 @@ export const updateSupplier = async (
       throw new AppError("Supplier not found", 404);
     }
 
-    const updateData = { ...updates };
-    delete (updateData as any).id;
-    delete (updateData as any).createdAt;
+    const updateData: Partial<Supplier> = { ...updates };
+    delete updateData.id;
+    delete updateData.createdAt;
 
     await docRef.update({
       ...updateData,
@@ -155,7 +173,7 @@ export const getSuppliersDropdown = async (): Promise<
   } catch (error) {
     console.error(
       "[SupplierService] Error fetching suppliers dropdown:",
-      error
+      error,
     );
     throw error;
   }

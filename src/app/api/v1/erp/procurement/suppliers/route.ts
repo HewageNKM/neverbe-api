@@ -14,19 +14,20 @@ export const GET = async (req: Request) => {
 
     const url = new URL(req.url);
     const dropdown = url.searchParams.get("dropdown");
-    const status = url.searchParams.get("status") as
-      | "active"
-      | "inactive"
-      | null;
+    const status = url.searchParams.get("status");
+    const search = url.searchParams.get("search");
 
     if (dropdown === "true") {
       const data = await getSuppliersDropdown();
       return NextResponse.json(data);
     }
 
-    const data = await getSuppliers(status || undefined);
+    const data = await getSuppliers(
+      (status as "active" | "inactive") || undefined,
+      search || undefined,
+    );
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return errorResponse(error);
   }
 };
@@ -39,7 +40,7 @@ export const POST = async (req: Request) => {
     const body = await req.json();
     const supplier = await createSupplier(body);
     return NextResponse.json(supplier, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return errorResponse(error);
   }
 };

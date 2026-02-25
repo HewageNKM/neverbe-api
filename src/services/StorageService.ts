@@ -21,16 +21,36 @@ export const uploadFile = async (file: File, path: string) => {
 
 export const uploadCompressedImage = async (file: File, path: string) => {
   const bytes = await file.arrayBuffer();
-  let buffer = Buffer.from(bytes as ArrayBuffer);
+  const originalBuffer = Buffer.from(bytes as ArrayBuffer);
 
-  // Compress and convert to webp using sharp
-  buffer = await sharp(buffer)
-    .webp({ quality: 70, effort: 6 }) // High effort for better compression
-    .toBuffer();
+  let quality = 80;
+  let compressedBuffer: Buffer;
+  const TARGET_SIZE_BYTES = 200 * 1024; // 200KB
+
+  // Initial processing: Resize to max 1600px width/height and convert to webp
+  const sharpInstance = sharp(originalBuffer).resize({
+    width: 1600,
+    height: 1600,
+    fit: "inside",
+    withoutEnlargement: true,
+  });
+
+  // Iterative compression loop
+  do {
+    compressedBuffer = await sharpInstance
+      .webp({ quality, effort: 6 })
+      .toBuffer();
+
+    if (compressedBuffer.length <= TARGET_SIZE_BYTES || quality <= 10) {
+      break;
+    }
+
+    quality -= 10;
+  } while (quality > 0);
 
   const fileRef = adminStorageBucket.file(path);
 
-  await fileRef.save(buffer, {
+  await fileRef.save(compressedBuffer, {
     metadata: {
       contentType: "image/webp",
     },

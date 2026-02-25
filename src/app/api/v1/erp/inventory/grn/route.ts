@@ -10,8 +10,12 @@ export const GET = async (req: Request) => {
 
     const url = new URL(req.url);
     const purchaseOrderId = url.searchParams.get("purchaseOrderId");
+    const status = url.searchParams.get("status");
 
-    const data = await getGRNs(purchaseOrderId || undefined);
+    const data = await getGRNs(
+      purchaseOrderId || undefined,
+      (status as any) || undefined,
+    );
     return NextResponse.json(data);
   } catch (error: any) {
     return errorResponse(error);

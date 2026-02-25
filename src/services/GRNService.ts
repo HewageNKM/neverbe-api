@@ -1,5 +1,5 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
-import { GRN, GRNItem } from "@/model/GRN";
+import { GRN, GRNItem, GRNStatus } from "@/model/GRN";
 import { FieldValue } from "firebase-admin/firestore";
 import {
   getPurchaseOrderById,
@@ -16,7 +16,7 @@ const INVENTORY_COLLECTION = "stock_inventory";
 const generateGRNNumber = async (): Promise<string> => {
   const today = new Date();
   const prefix = `GRN-${today.getFullYear()}${String(
-    today.getMonth() + 1
+    today.getMonth() + 1,
   ).padStart(2, "0")}`;
 
   const snapshot = await adminFirestore
@@ -39,12 +39,19 @@ const generateGRNNumber = async (): Promise<string> => {
 /**
  * Get all GRNs
  */
-export const getGRNs = async (purchaseOrderId?: string): Promise<GRN[]> => {
+export const getGRNs = async (
+  purchaseOrderId?: string,
+  status?: GRNStatus,
+): Promise<GRN[]> => {
   try {
     let query: FirebaseFirestore.Query = adminFirestore.collection(COLLECTION);
 
     if (purchaseOrderId) {
       query = query.where("purchaseOrderId", "==", purchaseOrderId);
+    }
+
+    if (status) {
+      query = query.where("status", "==", status);
     }
 
     const snapshot = await query.get();
@@ -81,11 +88,11 @@ export const createGRN = async (
   grn: Omit<
     GRN,
     "id" | "grnNumber" | "inventoryUpdated" | "createdAt" | "updatedAt"
-  >
+  >,
 ): Promise<GRN> => {
   try {
     // Validate PO exists
-    const po = await getPurchaseOrderById(grn.purchaseOrderId);
+    await getPurchaseOrderById(grn.purchaseOrderId);
     // getPurchaseOrderById now throws 404 if not found, so no explicit check needed here unless it returns null?
     // In PurchaseOrderService.ts, I updated it to throw AppError(404).
     // So 'const po' will be valid.
@@ -95,7 +102,7 @@ export const createGRN = async (
     // Calculate total
     const totalAmount = grn.items.reduce(
       (sum, item) => sum + item.totalCost,
-      0
+      0,
     );
 
     // Create GRN document
@@ -104,6 +111,7 @@ export const createGRN = async (
       grnNumber,
       totalAmount,
       inventoryUpdated: false,
+      status: "COMPLETED",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -122,7 +130,7 @@ export const createGRN = async (
         variantId: item.variantId,
         size: item.size,
         quantity: item.receivedQuantity,
-      }))
+      })),
     );
 
     return {
@@ -200,7 +208,7 @@ const updateInventoryFromGRN = async (items: GRNItem[]): Promise<void> => {
 
   await batch.commit();
   console.log(
-    `[GRNService] Updated inventory and product totals for ${items.length} items`
+    `[GRNService] Updated inventory and product totals for ${items.length} items`,
   );
 };
 
@@ -208,7 +216,7 @@ const updateInventoryFromGRN = async (items: GRNItem[]): Promise<void> => {
  * Get GRNs for a specific supplier
  */
 export const getGRNsBySupplierId = async (
-  supplierId: string
+  supplierId: string,
 ): Promise<GRN[]> => {
   try {
     const snapshot = await adminFirestore
