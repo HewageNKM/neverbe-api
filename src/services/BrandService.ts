@@ -9,7 +9,7 @@ const COLLECTION = "brands";
 
 // 🔹 Create
 export const createBrand = async (brand: Partial<Brand>, logo?: File) => {
-  const id = nanoid(8);
+  const id = `br-${nanoid(8)}`;
   let logoUrl = "";
 
   if (logo) {

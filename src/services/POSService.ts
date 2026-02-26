@@ -6,6 +6,7 @@ import { Order } from "@/model/Order";
 import { addOrder } from "./OrderService";
 import { AppError } from "@/utils/apiResponse";
 import { searchProducts } from "./AlgoliaService";
+import { nanoid } from "nanoid";
 
 // ================================
 // 🔹 DATA TYPES
@@ -468,10 +469,11 @@ export const getPettyCash = async (limit: number = 10) => {
 // ✅ Add Petty Cash Transaction
 export const addPettyCashTransaction = async (data: any) => {
   try {
-    const ref = adminFirestore.collection("petty_cash").doc();
+    const pcId = `pc-${nanoid(8)}`;
+    const ref = adminFirestore.collection("petty_cash").doc(pcId);
     const transaction = {
       ...data,
-      id: ref.id,
+      id: pcId,
       createdAt: Timestamp.now(),
     };
     await ref.set(transaction);

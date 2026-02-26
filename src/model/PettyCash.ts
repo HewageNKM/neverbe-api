@@ -2,6 +2,7 @@ import { Timestamp } from "firebase-admin/firestore";
 
 export interface PettyCash {
   id: string; // e.g. "ex-0ack"
+  date: Timestamp | string;
   amount: number;
   attachment: string; // URL
   category: string;

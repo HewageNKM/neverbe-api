@@ -8,6 +8,7 @@ import {
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
 import { searchAdjustments } from "./AlgoliaService";
+import { nanoid } from "nanoid";
 
 const COLLECTION = "inventory_adjustments";
 const INVENTORY_COLLECTION = "stock_inventory";
@@ -151,14 +152,18 @@ export const createAdjustment = async (
     const status = adjustment.status || "DRAFT";
 
     // Create adjustment record
-    const docRef = await adminFirestore.collection(COLLECTION).add({
-      ...adjustment,
-      status,
-      adjustmentNumber,
-      adjustedBy: userId,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const id = `adj-${nanoid(8)}`;
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(id)
+      .set({
+        ...adjustment,
+        status,
+        adjustmentNumber,
+        adjustedBy: userId,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
     // We do NOT update inventory here anymore. Only on COMPLETION.
     if (status === "COMPLETED") {
@@ -170,7 +175,7 @@ export const createAdjustment = async (
     );
 
     return {
-      id: docRef.id,
+      id,
       ...adjustment,
       status,
       adjustmentNumber,

@@ -16,8 +16,11 @@ export const addPettyCash = async (
     PettyCash,
     "id" | "createdAt" | "updatedAt" | "reviewedBy" | "reviewedAt"
   >,
-  file?: File
+  file?: File,
 ): Promise<PettyCash> => {
+  if (!data.date) {
+    throw new AppError("Date is required", 400);
+  }
   const id = `pc-${nanoid(8)}`;
   let attachmentUrl = "";
 
@@ -29,6 +32,12 @@ export const addPettyCash = async (
   const newEntry = {
     ...data,
     id,
+    date:
+      data.date instanceof Timestamp
+        ? data.date
+        : typeof data.date === "string" || typeof data.date === "number"
+          ? Timestamp.fromDate(new Date(data.date))
+          : Timestamp.now(),
     attachment: attachmentUrl,
     status: "PENDING",
     isDeleted: false,
@@ -40,6 +49,7 @@ export const addPettyCash = async (
 
   return {
     ...newEntry,
+    date: newEntry.date.toDate().toISOString(),
     createdAt: newEntry.createdAt.toDate().toISOString(),
     updatedAt: newEntry.updatedAt.toDate().toISOString(),
   } as unknown as PettyCash;
@@ -48,7 +58,7 @@ export const addPettyCash = async (
 export const updatePettyCash = async (
   id: string,
   data: Partial<PettyCash>,
-  file?: File
+  file?: File,
 ): Promise<PettyCash> => {
   const docRef = adminFirestore.collection(COLLECTION_NAME).doc(id);
   const doc = await docRef.get();
@@ -71,11 +81,18 @@ export const updatePettyCash = async (
 
   delete data.isDeleted;
 
-  const updates = {
+  const updates: any = {
     ...data,
     attachment: attachmentUrl,
     updatedAt: Timestamp.now(),
   };
+
+  if (data.date) {
+    updates.date =
+      data.date instanceof Timestamp
+        ? data.date
+        : Timestamp.fromDate(new Date(data.date as string));
+  }
 
   await docRef.update(updates);
 
@@ -84,17 +101,41 @@ export const updatePettyCash = async (
   return updatedDoc.data() as PettyCash;
 };
 
-export const getPettyCashList = async (): Promise<PettyCash[]> => {
-  const snapshot = await adminFirestore
+export const getPettyCashList = async (
+  page: number = 1,
+  size: number = 10,
+  filters?: {
+    status?: string;
+    type?: string;
+    category?: string;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+  },
+): Promise<{ data: PettyCash[]; total: number }> => {
+  let query: FirebaseFirestore.Query = adminFirestore
     .collection(COLLECTION_NAME)
     .where("isDeleted", "==", false)
-    .orderBy("createdAt", "desc")
-    .get();
+    .orderBy("createdAt", "desc");
 
-  return snapshot.docs.map((doc) => {
+  if (filters?.status && filters.status !== "ALL") {
+    query = query.where("status", "==", filters.status);
+  }
+  if (filters?.type && filters.type !== "ALL") {
+    query = query.where("type", "==", filters.type);
+  }
+  if (filters?.category && filters.category !== "ALL") {
+    query = query.where("category", "==", filters.category);
+  }
+
+  const snapshot = await query.get();
+
+  let results = snapshot.docs.map((doc) => {
     const d = doc.data();
     return {
       ...d,
+      date:
+        d.date instanceof Timestamp ? d.date.toDate().toISOString() : d.date,
       createdAt:
         d.createdAt instanceof Timestamp
           ? d.createdAt.toDate().toISOString()
@@ -109,6 +150,31 @@ export const getPettyCashList = async (): Promise<PettyCash[]> => {
           : d.reviewedAt,
     } as PettyCash;
   });
+
+  if (filters?.search) {
+    const s = filters.search.toLowerCase();
+    results = results.filter(
+      (r) =>
+        r.note?.toLowerCase().includes(s) ||
+        r.category?.toLowerCase().includes(s) ||
+        r.subCategory?.toLowerCase().includes(s) ||
+        r.id.toLowerCase().includes(s),
+    );
+  }
+
+  if (filters?.fromDate) {
+    const fd = new Date(filters.fromDate).getTime();
+    results = results.filter((r) => new Date(r.date as string).getTime() >= fd);
+  }
+  if (filters?.toDate) {
+    const td = new Date(filters.toDate).getTime() + 86400000; // Add one day to include the entire 'toDate'
+    results = results.filter((r) => new Date(r.date as string).getTime() < td);
+  }
+  // Apply pagination
+  results = results.slice((page - 1) * size, page * size);
+
+  const total = results.length;
+  return { data: results, total };
 };
 
 export const getPettyCashById = async (id: string): Promise<PettyCash> => {
@@ -120,6 +186,7 @@ export const getPettyCashById = async (id: string): Promise<PettyCash> => {
 
   return {
     ...d,
+    date: d.date instanceof Timestamp ? d.date.toDate().toISOString() : d.date,
     createdAt:
       d.createdAt instanceof Timestamp
         ? d.createdAt.toDate().toISOString()
@@ -161,7 +228,7 @@ export const deletePettyCash = async (id: string): Promise<void> => {
 export const reviewPettyCash = async (
   id: string,
   status: "APPROVED" | "REJECTED",
-  reviewerId: string
+  reviewerId: string,
 ): Promise<PettyCash> => {
   const docRef = adminFirestore.collection(COLLECTION_NAME).doc(id);
   const doc = await docRef.get();
@@ -184,7 +251,7 @@ export const reviewPettyCash = async (
     await updateBankAccountBalance(
       currentData.bankAccountId,
       currentData.amount,
-      balanceType
+      balanceType,
     );
   }
 
@@ -202,6 +269,8 @@ export const reviewPettyCash = async (
 
   return {
     ...d,
+    date:
+      d?.date instanceof Timestamp ? d.date.toDate().toISOString() : d?.date,
     createdAt:
       d?.createdAt instanceof Timestamp
         ? d.createdAt.toDate().toISOString()

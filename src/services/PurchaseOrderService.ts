@@ -6,6 +6,7 @@ import {
 } from "@/model/PurchaseOrder";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
+import { nanoid } from "nanoid";
 
 const COLLECTION = "purchase_orders";
 
@@ -100,18 +101,22 @@ export const createPurchaseOrder = async (
       receivedQuantity: 0,
     }));
 
-    const docRef = await adminFirestore.collection(COLLECTION).add({
-      ...po,
-      poNumber,
-      items,
-      totalAmount,
-      status: po.status || "DRAFT",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const id = `po-${nanoid(8)}`;
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(id)
+      .set({
+        ...po,
+        poNumber,
+        items,
+        totalAmount,
+        status: po.status || "DRAFT",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
     return {
-      id: docRef.id,
+      id,
       ...po,
       poNumber,
       items,

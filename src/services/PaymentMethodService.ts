@@ -1,6 +1,7 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { PaymentMethod } from "@/model/PaymentMethod";
 import { AppError } from "@/utils/apiResponse";
+import { nanoid } from "nanoid";
 
 const COLLECTION = "payment_methods";
 
@@ -27,7 +28,7 @@ export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
  * Get payment method by ID
  */
 export const getPaymentMethodById = async (
-  id: string
+  id: string,
 ): Promise<PaymentMethod> => {
   try {
     const doc = await adminFirestore
@@ -50,12 +51,13 @@ export const getPaymentMethodById = async (
  * Create new payment method
  */
 export const createPaymentMethod = async (
-  data: Omit<PaymentMethod, "id" | "createdAt" | "updatedAt" | "isDeleted">
+  data: Omit<PaymentMethod, "id" | "createdAt" | "updatedAt" | "isDeleted">,
 ): Promise<PaymentMethod> => {
   try {
-    const newDocRef = adminFirestore.collection(COLLECTION).doc();
+    const id = `pm-${nanoid(8)}`;
+    const newDocRef = adminFirestore.collection(COLLECTION).doc(id);
     const newMethod: PaymentMethod = {
-      id: newDocRef.id,
+      id,
       ...data,
       isDeleted: false,
       createdAt: new Date() as any,
@@ -78,7 +80,7 @@ export const createPaymentMethod = async (
  */
 export const updatePaymentMethod = async (
   id: string,
-  updates: Partial<PaymentMethod>
+  updates: Partial<PaymentMethod>,
 ): Promise<void> => {
   try {
     const docRef = adminFirestore.collection(COLLECTION).doc(id);

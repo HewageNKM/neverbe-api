@@ -1,6 +1,7 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { GRN, GRNItem, GRNStatus } from "@/model/GRN";
 import { FieldValue } from "firebase-admin/firestore";
+import { nanoid } from "nanoid";
 import {
   getPurchaseOrderById,
   updateReceivedQuantities,
@@ -106,15 +107,21 @@ export const createGRN = async (
     );
 
     // Create GRN document
-    const docRef = await adminFirestore.collection(COLLECTION).add({
-      ...grn,
-      grnNumber,
-      totalAmount,
-      inventoryUpdated: false,
-      status: "COMPLETED",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const id = `grn-${nanoid(8)}`;
+    await adminFirestore
+      .collection(COLLECTION)
+      .doc(id)
+      .set({
+        ...grn,
+        grnNumber,
+        totalAmount,
+        inventoryUpdated: false,
+        status: "COMPLETED",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+    const docRef = adminFirestore.collection(COLLECTION).doc(id);
 
     // Update inventory quantities
     await updateInventoryFromGRN(grn.items);

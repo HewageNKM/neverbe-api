@@ -1,6 +1,7 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Size } from "@/model/Size";
 import { AppError } from "@/utils/apiResponse";
+import { nanoid } from "nanoid";
 
 const COLLECTION = "sizes";
 
@@ -50,12 +51,16 @@ export const getSizes = async ({
 
 // 🔹 Create Size
 export const createSize = async (data: Size) => {
-  const docRef = await adminFirestore.collection(COLLECTION).add({
-    ...data,
-    nameLower: data.name.toLowerCase(),
-    isDeleted: false,
-  });
-  return { id: docRef.id, ...data };
+  const id = `sz-${nanoid(8)}`;
+  await adminFirestore
+    .collection(COLLECTION)
+    .doc(id)
+    .set({
+      ...data,
+      nameLower: data.name.toLowerCase(),
+      isDeleted: false,
+    });
+  return { id, ...data };
 };
 
 // 🔹 Update Size

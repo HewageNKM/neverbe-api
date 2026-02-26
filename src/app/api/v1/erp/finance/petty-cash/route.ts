@@ -15,12 +15,16 @@ export const GET = async (req: NextRequest) => {
     const type = searchParams.get("type") || undefined;
     const category = searchParams.get("category") || undefined;
     const search = searchParams.get("search") || undefined;
+    const fromDate = searchParams.get("fromDate") || undefined;
+    const toDate = searchParams.get("toDate") || undefined;
 
     const result = await getPettyCashList(page, size, {
       status,
       type,
       category,
       search,
+      fromDate,
+      toDate,
     });
     return NextResponse.json(result);
   } catch (error: any) {

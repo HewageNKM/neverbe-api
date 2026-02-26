@@ -2,6 +2,7 @@ import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { ShippingRule } from "@/model/ShippingRule";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
+import { nanoid } from "nanoid";
 
 const COLLECTION = "shipping_rules";
 
@@ -27,8 +28,9 @@ export const createShippingRule = async (data: Partial<ShippingRule>) => {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
-    const docRef = await adminFirestore.collection(COLLECTION).add(newRule);
-    return docRef.id;
+    const id = `sr-${nanoid(8)}`;
+    await adminFirestore.collection(COLLECTION).doc(id).set(newRule);
+    return id;
   } catch (error) {
     console.error("Error creating shipping rule:", error);
     throw error;
@@ -37,7 +39,7 @@ export const createShippingRule = async (data: Partial<ShippingRule>) => {
 
 export const updateShippingRule = async (
   id: string,
-  data: Partial<ShippingRule>
+  data: Partial<ShippingRule>,
 ) => {
   try {
     const docRef = adminFirestore.collection(COLLECTION).doc(id);
