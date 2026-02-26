@@ -5,6 +5,7 @@ import { POSOrder } from "@/model/POSTypes";
 import { Order } from "@/model/Order";
 import { addOrder } from "./OrderService";
 import { AppError } from "@/utils/apiResponse";
+import { searchProducts } from "./AlgoliaService";
 
 // ================================
 // 🔹 DATA TYPES
@@ -293,7 +294,7 @@ export const getProductsByStock = async (
   }
 };
 
-// ✅ Search products by name with stock filtering
+// ✅ Search products by name with stock filtering using Algolia hybrid approach
 export const searchProductsByStock = async (
   stockId: string,
   query: string,
@@ -321,29 +322,26 @@ export const searchProductsByStock = async (
     const productIds = Array.from(productIdsSet);
     if (productIds.length === 0) return [];
 
-    // 3️⃣ Fetch all matching products
-    // Note: Firestore doesn't support full-text search, so we fetch all and filter
-    const productsSnapshot = await adminFirestore
-      .collection("products")
-      .where("isDeleted", "==", false)
-      .where("status", "==", true)
-      .get();
+    // Request a large number of hits to ensure we get products that might be in this stock
+    const { hits } = await searchProducts(query, {
+      hitsPerPage: 1000,
+      filters: "status:true AND isDeleted:false",
+    });
 
-    const lowerQuery = query.toLowerCase();
-    const products: Product[] = productsSnapshot.docs
-      .filter((doc) => {
-        const data = doc.data();
-        return (
-          productIds.includes(doc.id) &&
-          (data.name?.toLowerCase().includes(lowerQuery) ||
-            data.sku?.toLowerCase().includes(lowerQuery) ||
-            data.brand?.toLowerCase().includes(lowerQuery))
-        );
-      })
-      .map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Product),
-      }));
+    // 4️⃣ Filter Algolia results to only include those present in the physical stock location
+    const products: Product[] = hits
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((hit: any) => productIds.includes(hit.objectID))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((hit: any) => {
+        // Remove Algolia specific fields and map objectID -> id
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { objectID, _highlightResult, ...rest } = hit;
+        return {
+          id: objectID,
+          ...rest,
+        } as Product;
+      });
 
     return products;
   } catch (error) {
