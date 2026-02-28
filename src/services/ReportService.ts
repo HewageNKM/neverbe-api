@@ -2372,8 +2372,10 @@ export const getProfitLossStatement = async (
       `[ReportService] Generating P&L Statement from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(new Date(from));
-    const endTimestamp = Timestamp.fromDate(new Date(to));
+    const startTimestamp = Timestamp.fromDate(
+      dayjs(from).startOf("day").toDate(),
+    );
+    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
 
     // Fetch orders
     const ordersSnapshot = await adminFirestore
@@ -2561,8 +2563,10 @@ export const getExpenseReport = async (
       `[ReportService] Generating Expense Report from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(new Date(from));
-    const endTimestamp = Timestamp.fromDate(new Date(to));
+    const startTimestamp = Timestamp.fromDate(
+      dayjs(from).startOf("day").toDate(),
+    );
+    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
 
     let query: FirebaseFirestore.Query = adminFirestore
       .collection("expenses")
@@ -2660,8 +2664,10 @@ export const getCustomerAnalytics = async (
       `[ReportService] Generating Customer Analytics from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(new Date(from));
-    const endTimestamp = Timestamp.fromDate(new Date(to));
+    const startTimestamp = Timestamp.fromDate(
+      dayjs(from).startOf("day").toDate(),
+    );
+    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
 
     // Fetch orders in period
     const ordersSnapshot = await adminFirestore
@@ -2831,8 +2837,10 @@ export const getTaxReport = async (
     const { getTaxSettings } = await import("./TaxService");
     const taxSettings = await getTaxSettings();
 
-    const startTimestamp = Timestamp.fromDate(new Date(from));
-    const endTimestamp = Timestamp.fromDate(new Date(to));
+    const startTimestamp = Timestamp.fromDate(
+      dayjs(from).startOf("day").toDate(),
+    );
+    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
 
     const ordersSnapshot = await adminFirestore
       .collection("orders")
