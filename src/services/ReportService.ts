@@ -3,6 +3,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
 import { searchStockInventory } from "./AlgoliaService";
+import dayjs from "dayjs";
 
 export const getDailySaleReport = async (
   from: string,
