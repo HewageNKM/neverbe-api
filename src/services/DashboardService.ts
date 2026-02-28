@@ -9,11 +9,12 @@ import { PopularItem } from "@/model/PopularItem";
  */
 export interface DashboardOverview {
   totalOrders: number;
-  totalGrossSales: number; // Gross Sale = total + discount
-  totalNetSales: number; // Net Sale = total
+  totalGrossSales: number; // Gross Sale = total + discount - orderFee
+  totalNetSales: number; // Net Sale = total - orderFee
+  totalShipping: number; // Total shipping collected (pass-through)
   totalDiscount: number;
-  totalBuyingCost: number; // COGS (Cost of Goods Sold)
-  totalProfit: number; // Gross Profit = Net Sales - COGS
+  totalBuyingCost: number; // Product COGS
+  totalProfit: number; // Net Profit (after COGS, shipping, and fees)
 }
 
 /**
@@ -112,6 +113,7 @@ export const getOverviewByDateRange = async (
     let totalBuyingCost = 0;
     let totalTransactionFee = 0;
     let totalFee = 0;
+    let totalShipping = 0;
 
     querySnapshot.docs.forEach((doc) => {
       const order = doc.data() as Order;
@@ -119,6 +121,7 @@ export const getOverviewByDateRange = async (
 
       const orderTotal = order.total || 0;
       const orderDiscount = order.discount || 0;
+      const orderShippingFee = order.shippingFee || 0;
       const orderTransactionFee = order.transactionFeeCharge || 0;
       const orderFee = order.fee || 0;
 
@@ -130,6 +133,8 @@ export const getOverviewByDateRange = async (
       // Gross Sale (Sales) = total + discount - orderFee
       const grossSale = orderTotal + orderDiscount - orderFee;
       totalGrossSales += grossSale;
+
+      totalShipping += orderShippingFee;
 
       // Accumulate discount
       totalDiscount += orderDiscount;
@@ -147,10 +152,14 @@ export const getOverviewByDateRange = async (
       totalFee += orderFee;
     });
 
-    // Gross Profit = Net Sales - COGS (matches ReportService)
-    // Note: Transaction fees and order fees are already subtracted in netSale calculation
+    // Net Profit = (Net Sales + Other Income) - (Buying Cost + Shipping Cost + Transaction Fees)
+    // totalNetSales is (orderTotal - orderFee)
+    // totalFee is (orderFee)
+    // totalNetSales + totalFee = orderTotal
     const totalProfit =
-      totalNetSales - totalBuyingCost + totalFee - totalTransactionFee;
+      totalNetSales +
+      totalFee -
+      (totalBuyingCost + totalShipping + totalTransactionFee);
 
     console.log(
       `[DashboardService] Fetched ${totalOrders} orders | Gross: ${totalGrossSales} | Net: ${totalNetSales} | COGS: ${totalBuyingCost} | Profit: ${totalProfit}`,
@@ -160,6 +169,7 @@ export const getOverviewByDateRange = async (
       totalOrders,
       totalGrossSales,
       totalNetSales,
+      totalShipping,
       totalDiscount,
       totalBuyingCost,
       totalProfit,
