@@ -14,6 +14,7 @@ export interface DashboardOverview {
   totalShipping: number; // Total shipping collected (pass-through)
   totalDiscount: number;
   totalBuyingCost: number; // Product COGS
+  totalFees: number; // Transaction and other fees
   totalProfit: number; // Net Profit (after COGS, shipping, and fees)
 }
 
@@ -172,11 +173,13 @@ export const getOverviewByDateRange = async (
       totalShipping,
       totalDiscount,
       totalBuyingCost,
+      totalFees: totalFee,
       totalProfit,
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -234,9 +237,10 @@ export const getYearlySalesPerformance = async (
       store: storeOrders,
       year: currentYear,
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -299,9 +303,10 @@ export const getRecentOrders = async (
 
     console.log(`[DashboardService] Fetched ${orders.length} recent orders`);
     return orders;
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -397,9 +402,10 @@ export const getPopularItems = async (
 
     // 7. Final sort (Promise.all might return out of order)
     return popularItems.sort((a, b) => b.soldCount - a.soldCount);
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -494,9 +500,10 @@ export const getLowStockAlerts = async (
       `[DashboardService] Found ${lowStockItems.length} low stock items`,
     );
     return lowStockItems;
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -601,9 +608,10 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
         profit: calcChange(currentData.totalProfit, lastData.totalProfit),
       },
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -742,9 +750,10 @@ export const getPendingOrdersCount = async (): Promise<PendingOrdersCount> => {
 
     console.log("[DashboardService] Pending orders:", result);
     return result;
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -800,9 +809,10 @@ export const getWeeklyTrends = async (): Promise<WeeklyTrends> => {
     }
 
     return { labels, orders, revenue };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -906,9 +916,10 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary> => {
       topCategory,
       topCategoryAmount,
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -950,23 +961,26 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
 
     const overview = await getOverviewByDateRange(startOfMonth, endOfMonth);
 
+    const totalRevenue = overview.totalNetSales + overview.totalFees;
+
     const grossMargin =
-      overview.totalGrossSales > 0
+      totalRevenue > 0
         ? Math.round(
-            ((overview.totalGrossSales - overview.totalBuyingCost) /
-              overview.totalGrossSales) *
+            ((totalRevenue -
+              (overview.totalBuyingCost + overview.totalShipping)) /
+              totalRevenue) *
               100,
           )
         : 0;
 
     const netMargin =
-      overview.totalNetSales > 0
-        ? Math.round((overview.totalProfit / overview.totalNetSales) * 100)
+      totalRevenue > 0
+        ? Math.round((overview.totalProfit / totalRevenue) * 100)
         : 0;
 
     const avgOrderValue =
       overview.totalOrders > 0
-        ? Math.round(overview.totalNetSales / overview.totalOrders)
+        ? Math.round(totalRevenue / overview.totalOrders)
         : 0;
 
     return {
@@ -974,9 +988,10 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
       netMargin,
       avgOrderValue,
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
@@ -1061,9 +1076,10 @@ export const getInventoryValue = async (): Promise<InventoryValue> => {
       avgItemValue:
         totalQuantity > 0 ? Math.round(totalValue / totalQuantity) : 0,
     };
-  } catch (error: any) {
-    console.error("[DashboardService] Error:", error);
-    throw error;
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("[DashboardService] Error:", err);
+    throw err;
   }
 };
 
