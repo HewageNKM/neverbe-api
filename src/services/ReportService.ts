@@ -38,9 +38,8 @@ export const getDailySaleReport = async (
     }));
 
     const getNetSale = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) - (o.transactionFeeCharge || 0);
-    const getSales = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) + (o.discount || 0);
+      (o.total || 0) - (o.transactionFeeCharge || 0);
+    const getSales = (o: any) => (o.total || 0) + (o.discount || 0);
     const getCOGS = (o: any) =>
       o.items.reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
@@ -244,9 +243,8 @@ export const getMonthlySummary = async (
     }));
 
     const getNetSales = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) - (o.transactionFeeCharge || 0);
-    const getSales = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) + (o.discount || 0);
+      (o.total || 0) - (o.transactionFeeCharge || 0);
+    const getSales = (o: any) => (o.total || 0) + (o.discount || 0);
     const getCOGS = (o: any) =>
       (o.items || []).reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
@@ -458,9 +456,8 @@ export const getYearlySummary = async (
 
     /// Gross sales = total - shipping + discount
     const getNetSales = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) - (o.transactionFeeCharge || 0);
-    const getSales = (o: any) =>
-      (o.total || 0) - (o.shippingFee || 0) + (o.discount || 0);
+      (o.total || 0) - (o.transactionFeeCharge || 0);
+    const getSales = (o: any) => (o.total || 0) + (o.discount || 0);
     const getCOGS = (o: any) =>
       (o.items || []).reduce(
         (c: number, i: any) => c + (i.bPrice || 0) * i.quantity,
@@ -1727,13 +1724,8 @@ export const getDailyRevenueReport = async (
       let totalTransactionFee = 0;
 
       dayOrders.forEach((o) => {
-        const sales =
-          (o.total || 0) +
-          (o.discount || 0) -
-          (o.fee || 0) -
-          (o.shippingFee || 0);
-        const netSales =
-          (o.total || 0) - (o.shippingFee || 0) - (o.transactionFeeCharge || 0);
+        const sales = (o.total || 0) + (o.discount || 0) - (o.fee || 0);
+        const netSales = (o.total || 0) - (o.transactionFeeCharge || 0);
         const cogs = o.items.reduce(
           (sum, item) => sum + (item.bPrice || 0) * (item.quantity || 0),
           0,
@@ -2424,8 +2416,6 @@ export const getProfitLossStatement = async (
     });
 
     // Calculate revenue
-    // gross sale = order.total - shippingFee - fee + discount
-    // net sale = order.total - shippingFee - fee
     let grossSales = 0;
     let netSales = 0;
     let totalDiscounts = 0;
@@ -2441,8 +2431,10 @@ export const getProfitLossStatement = async (
       const discount = order.discount || 0;
 
       // Per order calculations
+      // net sale = orderTotal - shippingFee - orderFee
       const orderNetSale = orderTotal - shippingFee - orderFee;
-      const orderGrossSale = orderTotal - shippingFee - orderFee + discount;
+      // gross sale = netSale + discount
+      const orderGrossSale = orderNetSale + discount;
 
       netSales += orderNetSale;
       grossSales += orderGrossSale;
@@ -2457,8 +2449,6 @@ export const getProfitLossStatement = async (
       });
     });
 
-    const totalRevenue = netSales;
-
     // Calculate expenses by category
     const expensesByCategory = new Map<string, number>();
     expensesSnapshot.docs.forEach((doc) => {
@@ -2471,24 +2461,34 @@ export const getProfitLossStatement = async (
       );
     });
 
-    const expenseCategoryArray = Array.from(expensesByCategory.entries())
-      .map(([category, amount]) => ({ category, amount }))
-      .sort((a, b) => b.amount - a.amount);
+    const expenseCategoryArray: { category: string; amount: number }[] =
+      Array.from(expensesByCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
 
     const totalExpenses = expenseCategoryArray.reduce(
       (sum, e) => sum + e.amount,
       0,
     );
 
+    // Total Revenue is product sales + shipping + other fees
+    const totalShippingCollected = Array.from(ordersSnapshot.docs).reduce(
+      (sum, doc) => sum + (doc.data().shippingFee || 0),
+      0,
+    );
+    const totalRevenueValue = netSales + totalShippingCollected + totalOrderFee;
+
     // Calculate profit
-    const grossProfit = totalRevenue - totalProductCost;
-    const grossProfitMargin =
-      totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    const operatingIncome = grossProfit - totalExpenses;
-    // Net profit includes fee as income (fee was deducted from net sales, so add it back)
-    const netProfit = operatingIncome - totalTransactionFees + totalOrderFee;
-    const netProfitMargin =
-      totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+    const grossProfitValue =
+      totalRevenueValue - (totalProductCost + totalShippingCollected);
+    const grossProfitMarginValue =
+      totalRevenueValue > 0 ? (grossProfitValue / totalRevenueValue) * 100 : 0;
+    const operatingIncomeValue = grossProfitValue - totalExpenses;
+    // Net profit includes fee as income
+    const netProfitValue =
+      operatingIncomeValue - totalTransactionFees + totalOrderFee;
+    const netProfitMarginValue =
+      totalRevenueValue > 0 ? (netProfitValue / totalRevenueValue) * 100 : 0;
 
     return {
       period: { from, to },
@@ -2496,29 +2496,29 @@ export const getProfitLossStatement = async (
         grossSales,
         discounts: totalDiscounts,
         netSales,
-        shippingIncome: 0, // Removed from calculation
-        otherIncome: totalOrderFee, // Order fees as income
-        totalRevenue,
+        shippingIncome: totalShippingCollected,
+        otherIncome: totalOrderFee,
+        totalRevenue: totalRevenueValue,
       },
       costOfGoodsSold: {
         productCost: totalProductCost,
-        shippingCost: 0,
-        totalCOGS: totalProductCost,
+        shippingCost: totalShippingCollected,
+        totalCOGS: totalProductCost + totalShippingCollected,
       },
-      grossProfit,
-      grossProfitMargin: Math.round(grossProfitMargin * 100) / 100,
+      grossProfit: grossProfitValue,
+      grossProfitMargin: Math.round(grossProfitMarginValue * 100) / 100,
       operatingExpenses: {
         byCategory: expenseCategoryArray,
         totalExpenses,
       },
-      operatingIncome,
+      operatingIncome: operatingIncomeValue,
       otherExpenses: {
         transactionFees: totalTransactionFees,
         otherFees: 0,
         totalOther: totalTransactionFees,
       },
-      netProfit,
-      netProfitMargin: Math.round(netProfitMargin * 100) / 100,
+      netProfit: netProfitValue,
+      netProfitMargin: Math.round(netProfitMarginValue * 100) / 100,
     };
   } catch (error) {
     console.error("[ReportService] P&L Statement error:", error);

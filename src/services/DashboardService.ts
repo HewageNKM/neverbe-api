@@ -1,7 +1,7 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Order } from "@/model/Order";
-import { Item } from "@/model/Item";
+import { Product } from "@/model/Product";
 import { PopularItem } from "@/model/PopularItem";
 
 /**
@@ -9,8 +9,8 @@ import { PopularItem } from "@/model/PopularItem";
  */
 export interface DashboardOverview {
   totalOrders: number;
-  totalGrossSales: number; // Gross Sale = total - shippingFee + discount
-  totalNetSales: number; // Net Sale = total - shippingFee - transactionFee
+  totalGrossSales: number; // Gross Sale = total + discount
+  totalNetSales: number; // Net Sale = total
   totalDiscount: number;
   totalBuyingCost: number; // COGS (Cost of Goods Sold)
   totalProfit: number; // Gross Profit = Net Sales - COGS
@@ -37,7 +37,7 @@ export const getDailySnapshot = async (): Promise<DashboardOverview> => {
     0,
     0,
     0,
-    0
+    0,
   );
   const endOfDay = new Date(
     now.getFullYear(),
@@ -46,7 +46,7 @@ export const getDailySnapshot = async (): Promise<DashboardOverview> => {
     23,
     59,
     59,
-    999
+    999,
   );
 
   return getOverviewByDateRange(startOfDay, endOfDay);
@@ -57,11 +57,11 @@ export const getDailySnapshot = async (): Promise<DashboardOverview> => {
  */
 export const getOverviewByDateRange = async (
   startDate: Date,
-  endDate: Date
+  endDate: Date,
 ): Promise<DashboardOverview> => {
   try {
     console.log(
-      `[DashboardService] Fetching overview from ${startDate} to ${endDate}`
+      `[DashboardService] Fetching overview from ${startDate} to ${endDate}`,
     );
 
     const startTimestamp = Timestamp.fromDate(startDate);
@@ -92,14 +92,14 @@ export const getOverviewByDateRange = async (
     // Fetch product data for buying prices
     const productDocs = await Promise.all(
       Array.from(productIds).map((productId) =>
-        adminFirestore.collection("products").doc(productId).get()
-      )
+        adminFirestore.collection("products").doc(productId).get(),
+      ),
     );
 
     const productPriceMap = new Map<string, number>();
     productDocs.forEach((doc) => {
       if (doc.exists) {
-        const product = doc.data() as Item;
+        const product = doc.data() as Product;
         productPriceMap.set(doc.id, product.buyingPrice || 0);
       }
     });
@@ -119,18 +119,16 @@ export const getOverviewByDateRange = async (
 
       const orderTotal = order.total || 0;
       const orderDiscount = order.discount || 0;
-      const orderShippingFee = order.shippingFee || 0;
       const orderTransactionFee = order.transactionFeeCharge || 0;
       const orderFee = order.fee || 0;
 
       // Match ReportService formulas:
-      // Net Sale = total - shippingFee - transactionFeeCharge
-      const netSale = orderTotal - orderShippingFee - orderFee;
+      // Net Sale = total - orderFee
+      const netSale = orderTotal - orderFee;
       totalNetSales += netSale;
 
-      // Gross Sale (Sales) = total - shippingFee + discount
-      const grossSale =
-        orderTotal - orderShippingFee + orderDiscount - orderFee;
+      // Gross Sale (Sales) = total + discount - orderFee
+      const grossSale = orderTotal + orderDiscount - orderFee;
       totalGrossSales += grossSale;
 
       // Accumulate discount
@@ -155,7 +153,7 @@ export const getOverviewByDateRange = async (
       totalNetSales - totalBuyingCost + totalFee - totalTransactionFee;
 
     console.log(
-      `[DashboardService] Fetched ${totalOrders} orders | Gross: ${totalGrossSales} | Net: ${totalNetSales} | COGS: ${totalBuyingCost} | Profit: ${totalProfit}`
+      `[DashboardService] Fetched ${totalOrders} orders | Gross: ${totalGrossSales} | Net: ${totalNetSales} | COGS: ${totalBuyingCost} | Profit: ${totalProfit}`,
     );
 
     return {
@@ -176,12 +174,12 @@ export const getOverviewByDateRange = async (
  * Get yearly sales performance for chart (order counts by month and source)
  */
 export const getYearlySalesPerformance = async (
-  year?: number
+  year?: number,
 ): Promise<YearlySalesPerformance> => {
   try {
     const currentYear = year || new Date().getFullYear();
     console.log(
-      `[DashboardService] Fetching yearly sales performance for ${currentYear}`
+      `[DashboardService] Fetching yearly sales performance for ${currentYear}`,
     );
 
     const startOfYear = new Date(currentYear, 0, 1, 0, 0, 0, 0);
@@ -217,8 +215,8 @@ export const getYearlySalesPerformance = async (
     console.log(
       `[DashboardService] Sales performance: Website=${websiteOrders.reduce(
         (a, b) => a + b,
-        0
-      )}, Store=${storeOrders.reduce((a, b) => a + b, 0)}`
+        0,
+      )}, Store=${storeOrders.reduce((a, b) => a + b, 0)}`,
     );
 
     return {
@@ -249,7 +247,7 @@ export interface RecentOrder {
  * Get recent orders for dashboard (latest N orders)
  */
 export const getRecentOrders = async (
-  limitCount: number = 6
+  limitCount: number = 6,
 ): Promise<RecentOrder[]> => {
   try {
     console.log(`[DashboardService] Fetching ${limitCount} recent orders`);
@@ -303,7 +301,7 @@ export const getRecentOrders = async (
 export const getPopularItems = async (
   limit: number = 10,
   month: number, // 0-indexed (0 = Jan, 11 = Dec)
-  year: number
+  year: number,
 ): Promise<PopularItem[]> => {
   try {
     // 1. Calculate First Day: Year, Month, 1st day
@@ -315,7 +313,7 @@ export const getPopularItems = async (
     endDay.setHours(23, 59, 59, 999);
 
     console.log(
-      `[DashboardService] Fetching popular items from ${startDay.toString()} to ${endDay.toString()}`
+      `[DashboardService] Fetching popular items from ${startDay.toString()} to ${endDay.toString()}`,
     );
 
     const startTimestamp = Timestamp.fromDate(startDay);
@@ -330,7 +328,7 @@ export const getPopularItems = async (
       .get();
 
     console.log(
-      `[DashboardService] Fetched ${orders.size} orders for popular items`
+      `[DashboardService] Fetched ${orders.size} orders for popular items`,
     );
 
     // 4. Aggregate Sales Counts
@@ -364,27 +362,27 @@ export const getPopularItems = async (
             .get();
 
           if (productDoc.exists) {
-            const itemData = productDoc.data() as Item;
+            const itemData = productDoc.data() as Product;
             popularItems.push({
               item: {
                 ...itemData,
                 createdAt: null,
                 updatedAt: null,
-              },
+              } as any,
               soldCount: count,
             });
           }
         } catch (fetchErr) {
           console.error(
             `[DashboardService] Error fetching product ${itemId}:`,
-            fetchErr
+            fetchErr,
           );
         }
-      })
+      }),
     );
 
     console.log(
-      `[DashboardService] Returning ${popularItems.length} popular items`
+      `[DashboardService] Returning ${popularItems.length} popular items`,
     );
 
     // 7. Final sort (Promise.all might return out of order)
@@ -416,11 +414,11 @@ export interface LowStockItem {
  */
 export const getLowStockAlerts = async (
   threshold: number = 5,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<LowStockItem[]> => {
   try {
     console.log(
-      `[DashboardService] Fetching low stock items (threshold: ${threshold})`
+      `[DashboardService] Fetching low stock items (threshold: ${threshold})`,
     );
 
     // Use 'stock_inventory' collection (not 'inventory')
@@ -456,8 +454,8 @@ export const getLowStockAlerts = async (
       validProductIds.length > 0
         ? await Promise.all(
             validProductIds.map((id) =>
-              adminFirestore.collection("products").doc(id).get()
-            )
+              adminFirestore.collection("products").doc(id).get(),
+            ),
           )
         : [];
 
@@ -483,7 +481,7 @@ export const getLowStockAlerts = async (
     });
 
     console.log(
-      `[DashboardService] Found ${lowStockItems.length} low stock items`
+      `[DashboardService] Found ${lowStockItems.length} low stock items`,
     );
     return lowStockItems;
   } catch (error: any) {
@@ -530,7 +528,7 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
       0,
       0,
       0,
-      0
+      0,
     );
     const currentMonthEnd = new Date(
       currentYear,
@@ -539,7 +537,7 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     // Last month range
@@ -550,7 +548,7 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
       0,
       0,
       0,
-      0
+      0,
     );
     const lastMonthEnd = new Date(
       currentYear,
@@ -559,7 +557,7 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     console.log("[DashboardService] Fetching monthly comparison");
@@ -625,7 +623,7 @@ export const getOrderStatusDistribution =
         0,
         0,
         0,
-        0
+        0,
       );
       const endOfMonth = new Date(
         now.getFullYear(),
@@ -634,7 +632,7 @@ export const getOrderStatusDistribution =
         23,
         59,
         59,
-        999
+        999,
       );
 
       console.log("[DashboardService] Fetching order status distribution");
@@ -685,7 +683,7 @@ export const getOrderStatusDistribution =
 
       console.log(
         "[DashboardService] Order status distribution:",
-        distribution
+        distribution,
       );
       return distribution;
     } catch (error: any) {
@@ -830,7 +828,7 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary> => {
       1,
       0,
       0,
-      0
+      0,
     );
     const endOfMonth = new Date(
       now.getFullYear(),
@@ -839,7 +837,7 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary> => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     // Fetch today's expenses
@@ -878,7 +876,7 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary> => {
       const category = data.for || "Other";
       categoryTotals.set(
         category,
-        (categoryTotals.get(category) || 0) + amount
+        (categoryTotals.get(category) || 0) + amount,
       );
     });
 
@@ -928,7 +926,7 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
       0,
       0,
       0,
-      0
+      0,
     );
     const endOfMonth = new Date(
       now.getFullYear(),
@@ -937,7 +935,7 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     const overview = await getOverviewByDateRange(startOfMonth, endOfMonth);
@@ -947,7 +945,7 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
         ? Math.round(
             ((overview.totalGrossSales - overview.totalBuyingCost) /
               overview.totalGrossSales) *
-              100
+              100,
           )
         : 0;
 
@@ -1022,8 +1020,8 @@ export const getInventoryValue = async (): Promise<InventoryValue> => {
       validProductIds.length > 0
         ? await Promise.all(
             validProductIds.map((id) =>
-              adminFirestore.collection("products").doc(id).get()
-            )
+              adminFirestore.collection("products").doc(id).get(),
+            ),
           )
         : [];
 
@@ -1084,7 +1082,7 @@ export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
       0,
       0,
       0,
-      0
+      0,
     );
     const endOfMonth = new Date(
       now.getFullYear(),
@@ -1093,7 +1091,7 @@ export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     const ordersQuery = adminFirestore
@@ -1125,8 +1123,8 @@ export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
       validProductIds.length > 0
         ? await Promise.all(
             validProductIds.map((id) =>
-              adminFirestore.collection("products").doc(id).get()
-            )
+              adminFirestore.collection("products").doc(id).get(),
+            ),
           )
         : [];
 
