@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { toSafeLocaleString } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
+import { searchPromotions, searchCoupons } from "./AlgoliaService";
 
 const PROMOTIONS_COLLECTION = "promotions";
 
@@ -25,43 +26,38 @@ export const getPromotions = async (
   pageNumber: number = 1,
   size: number = 20,
   filterStatus?: string,
+  search?: string,
+  type?: string,
 ): Promise<{ dataList: Promotion[]; rowCount: number }> => {
   try {
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection(PROMOTIONS_COLLECTION)
-      .where("isDeleted", "!=", true);
+    const filters: string[] = ["isDeleted:false"];
 
-    if (filterStatus) {
-      query = query.where("isActive", "==", filterStatus === "ACTIVE");
+    if (filterStatus && filterStatus !== "all") {
+      filters.push(
+        `isActive:${filterStatus === "ACTIVE" || filterStatus === "true"}`,
+      );
     }
 
-    // Sort by priority and created date
-    query = query.orderBy("priority", "desc").orderBy("createdAt", "desc");
+    if (type && type !== "all") {
+      filters.push(`type:"${type}"`);
+    }
 
-    const offset = (pageNumber - 1) * size;
-    const snapshot = await query.offset(offset).limit(size).get();
-
-    // Get total count (for pagination) - simplistic approach
-    // In production with high volume, consider aggregation queries or counters
-    const allDocs = await adminFirestore
-      .collection(PROMOTIONS_COLLECTION)
-      .where("isDeleted", "!=", true)
-      .get();
-    const rowCount = allDocs.size;
-
-    const dataList = snapshot.docs.map((doc) => {
-      const data = doc.data() as Omit<Promotion, "id">;
-      return {
-        id: doc.id,
-        ...data,
-        startDate: toSafeLocaleString(data.startDate) || "",
-        endDate: toSafeLocaleString(data.endDate) || "",
-        createdAt: toSafeLocaleString(data.createdAt) || "",
-        updatedAt: toSafeLocaleString(data.updatedAt) || "",
-      };
+    const { hits, nbHits } = await searchPromotions(search || "", {
+      page: pageNumber - 1,
+      hitsPerPage: size,
+      filters: filters.join(" AND "),
     });
 
-    return { dataList, rowCount };
+    const dataList = hits.map((hit: any) => ({
+      ...hit,
+      id: hit.objectID || hit.id,
+      startDate: toSafeLocaleString(hit.startDate) || "",
+      endDate: toSafeLocaleString(hit.endDate) || "",
+      createdAt: toSafeLocaleString(hit.createdAt) || "",
+      updatedAt: toSafeLocaleString(hit.updatedAt) || "",
+    })) as Promotion[];
+
+    return { dataList, rowCount: nbHits };
   } catch (error) {
     console.error("Error getting promotions:", error);
     throw error;
@@ -251,16 +247,37 @@ export const getCouponByCode = async (code: string): Promise<Coupon | null> => {
   } as Coupon;
 };
 
-export const getCoupons = async (): Promise<Coupon[]> => {
+export const getCoupons = async (
+  pageNumber: number = 1,
+  size: number = 20,
+  filterStatus?: string,
+  search?: string,
+): Promise<{ dataList: Coupon[]; rowCount: number }> => {
   try {
-    const snapshot = await adminFirestore
-      .collection(COUPONS_COLLECTION)
-      .where("isDeleted", "==", false)
-      .get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
+    const filters: string[] = ["isDeleted:false"];
+
+    if (filterStatus && filterStatus !== "all") {
+      filters.push(
+        `isActive:${filterStatus === "ACTIVE" || filterStatus === "true"}`,
+      );
+    }
+
+    const { hits, nbHits } = await searchCoupons(search || "", {
+      page: pageNumber - 1,
+      hitsPerPage: size,
+      filters: filters.join(" AND "),
+    });
+
+    const dataList = hits.map((hit: any) => ({
+      ...hit,
+      id: hit.objectID || hit.id,
+      startDate: toSafeLocaleString(hit.startDate) || "",
+      endDate: toSafeLocaleString(hit.endDate) || "",
+      createdAt: toSafeLocaleString(hit.createdAt) || "",
+      updatedAt: toSafeLocaleString(hit.updatedAt) || "",
     })) as Coupon[];
+
+    return { dataList, rowCount: nbHits };
   } catch (error) {
     console.error("Error getting coupons:", error);
     throw error;

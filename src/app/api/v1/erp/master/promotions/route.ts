@@ -12,8 +12,10 @@ export const GET = async (req: NextRequest) => {
     const page = parseInt(searchParams.get("page") || "1");
     const size = parseInt(searchParams.get("size") || "20");
     const filterStatus = searchParams.get("status") || undefined;
+    const search = searchParams.get("search") || undefined;
+    const type = searchParams.get("type") || undefined;
 
-    const result = await getPromotions(page, size, filterStatus);
+    const result = await getPromotions(page, size, filterStatus, search, type);
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("GET /api/v2/promotions Error:", error);

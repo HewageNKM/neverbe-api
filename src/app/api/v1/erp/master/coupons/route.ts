@@ -11,8 +11,10 @@ export const GET = async (req: NextRequest) => {
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
     const size = parseInt(searchParams.get("size") || "20");
+    const search = searchParams.get("search") || undefined;
+    const filterStatus = searchParams.get("status") || undefined;
 
-    const result = await getCoupons(page, size);
+    const result = await getCoupons(page, size, filterStatus, search);
     return NextResponse.json(result);
   } catch (error: any) {
     return errorResponse(error);

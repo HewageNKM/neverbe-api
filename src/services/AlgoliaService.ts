@@ -116,3 +116,59 @@ export const searchAdjustments = async (
     nbPages: result.nbPages,
   };
 };
+
+export const searchPromotions = async (
+  query: string = "",
+  params: {
+    page?: number;
+    hitsPerPage?: number;
+    filters?: string;
+  } = {},
+) => {
+  const { page = 0, hitsPerPage = 20, filters = "" } = params;
+
+  const result = await client.searchSingleIndex({
+    indexName: "promotions_index",
+    searchParams: {
+      query,
+      page,
+      hitsPerPage,
+      filters,
+    },
+  });
+
+  return {
+    hits: result.hits,
+    nbHits: result.nbHits,
+    page: result.page,
+    nbPages: result.nbPages,
+  };
+};
+
+export const searchCoupons = async (
+  query: string = "",
+  params: {
+    page?: number;
+    hitsPerPage?: number;
+    filters?: string;
+  } = {},
+) => {
+  const { page = 0, hitsPerPage = 20, filters = "" } = params;
+
+  const result = await client.searchSingleIndex({
+    indexName: "coupons_index",
+    searchParams: {
+      query,
+      page,
+      hitsPerPage,
+      filters,
+    },
+  });
+
+  return {
+    hits: result.hits,
+    nbHits: result.nbHits,
+    page: result.page,
+    nbPages: result.nbPages,
+  };
+};
