@@ -1048,11 +1048,9 @@ export const getSalesVsDiscount = async (
         };
       }
 
-      const sale =
-        (order.total || 0) + order.discount - (order.shippingFee || 0);
+      const sale = (order.total || 0) + (order.discount || 0);
       const transactionFee = order.transactionFeeCharge || 0;
-      const netSales =
-        sale - (order.discount || 0) - (order.transactionFeeCharge || 0);
+      const netSales = (order.total || 0) - (order.transactionFeeCharge || 0);
 
       reportMap[key].totalSales += sale;
       reportMap[key].totalNetSales += netSales;
