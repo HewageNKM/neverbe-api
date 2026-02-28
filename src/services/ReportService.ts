@@ -4,11 +4,17 @@ import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
 import { searchStockInventory } from "./AlgoliaService";
 
-export const getDailySaleReport = async (from: string, to: string) => {
+export const getDailySaleReport = async (
+  from: string,
+  to: string,
+  status: string = "Paid",
+) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+    let query = adminFirestore.collection("orders");
+
+    if (status !== "all") {
+      query = query.where("paymentStatus", "==", status);
+    }
 
     if (from && to) {
       const start = new Date(from);
@@ -206,11 +212,17 @@ export const getDailySaleReport = async (from: string, to: string) => {
   }
 };
 
-export const getMonthlySummary = async (from: string, to: string) => {
+export const getMonthlySummary = async (
+  from: string,
+  to: string,
+  status: string = "Paid",
+) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+    let query = adminFirestore.collection("orders");
+
+    if (status !== "all") {
+      query = query.where("paymentStatus", "==", status);
+    }
 
     if (from && to) {
       const start = new Date(from);
@@ -413,11 +425,17 @@ export const getMonthlySummary = async (from: string, to: string) => {
   }
 };
 
-export const getYearlySummary = async (from: string, to: string) => {
+export const getYearlySummary = async (
+  from: string,
+  to: string,
+  status: string = "Paid",
+) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+    let query = adminFirestore.collection("orders");
+
+    if (status !== "all") {
+      query = query.where("paymentStatus", "==", status);
+    }
 
     if (from && to) {
       const start = new Date(from);
@@ -685,11 +703,14 @@ export const getTopSellingProducts = async (
   from?: string,
   to?: string,
   threshold?: number,
+  status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+    let query = adminFirestore.collection("orders");
+
+    if (status !== "all") {
+      query = query.where("paymentStatus", "==", status);
+    }
 
     if (from && to) {
       const start = new Date(from);
@@ -772,11 +793,17 @@ export const getTopSellingProducts = async (
   }
 };
 
-export const getSalesByCategory = async (from?: string, to?: string) => {
+export const getSalesByCategory = async (
+  from?: string,
+  to?: string,
+  status: string = "Paid",
+) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+    let query = adminFirestore.collection("orders");
+
+    if (status !== "all") {
+      query = query.where("paymentStatus", "==", status);
+    }
 
     if (from && to) {
       const start = new Date(from);

@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
+    const status = url.searchParams.get("status") || "Paid";
 
-    const data = await getYearlySummary(from, to);
+    const data = await getYearlySummary(from, to, status);
     return NextResponse.json(data);
   } catch (error: any) {
     return errorResponse(error);

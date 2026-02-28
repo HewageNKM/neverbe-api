@@ -11,8 +11,9 @@ export const GET = async (req: NextRequest) => {
     const url = new URL(req.url);
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
+    const status = url.searchParams.get("status") || "Paid";
 
-    const res = await getDailySaleReport(from, to);
+    const res = await getDailySaleReport(from, to, status);
     return NextResponse.json(res);
   } catch (error: any) {
     return errorResponse(error);

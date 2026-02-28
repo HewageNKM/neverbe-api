@@ -12,10 +12,11 @@ export async function GET(req: NextRequest) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const threshold = Number.parseInt(
-      url.searchParams.get("threshold") || "10"
+      url.searchParams.get("threshold") || "10",
     );
+    const status = url.searchParams.get("status") || "Paid";
 
-    const data = await getTopSellingProducts(from, to, threshold);
+    const data = await getTopSellingProducts(from, to, threshold, status);
     return NextResponse.json(data);
   } catch (error: any) {
     return errorResponse(error);
