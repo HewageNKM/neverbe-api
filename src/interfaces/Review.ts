@@ -1,0 +1,12 @@
+import { Timestamp } from "@firebase/firestore";
+
+export interface Review {
+  reviewId: string;
+  itemId: string;
+  rating: number;
+  review: string;
+  userId: string;
+  userName: string;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+}
