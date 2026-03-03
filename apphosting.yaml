@@ -33,6 +33,12 @@ env:
     value: "a511b0ae44b3411786428006f0eab919"
   - variable: NEXT_PUBLIC_ALGOLIA_APP_ID
     value: "T4W2OD5EXU"
+  - variable: NEXT_PUBLIC_KOKO_REDIRECT_URL
+    value: "https://qaapi.paykoko.com/api/merchants/orderCreate"
+  - variable: NEXT_PUBLIC_WHATSAPP_NUMBER
+    value: "94705208999"
+  - variable: NEXT_PUBLIC_PAYHERE_URL
+    value: "https://payhere.lk/pay/checkout"
 
 # Sensitive Secrets (Must be created in Cloud Secret Manager)
 # See: https://firebase.google.com/docs/app-hosting/configure#secret-parameters
@@ -45,3 +51,17 @@ secrets:
     secret: TEXT_API_KEY
   - variable: HASH_SECRET
     secret: HASH_SECRET
+  - variable: KOKO_MERCHANT_ID
+    secret: KOKO_MERCHANT_ID
+  - variable: KOKO_API_KEY
+    secret: KOKO_API_KEY
+  - variable: KOKO_PRIVATE_KEY
+    secret: KOKO_PRIVATE_KEY
+  - variable: KOKO_PUBLIC_KEY
+    secret: KOKO_PUBLIC_KEY
+  - variable: RECAPTCHA_SECRET_KEY
+    secret: RECAPTCHA_SECRET_KEY
+  - variable: PAYHERE_MERCHANT_SECRET
+    secret: PAYHERE_MERCHANT_SECRET
+  - variable: PAYHERE_MERCHANT_ID
+    secret: PAYHERE_MERCHANT_ID
