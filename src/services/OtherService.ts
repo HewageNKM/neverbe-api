@@ -26,3 +26,13 @@ export const getCategoriesForDropdown = () =>
  * Get ERP settings
  */
 export const getSettings = () => otherRepository.getSettings();
+
+/**
+ * Get sliders
+ */
+export const getSliders = () => otherRepository.getSliders();
+
+/**
+ * Get navigation config
+ */
+export const getNavigationConfig = () => otherRepository.getNavigationConfig();
