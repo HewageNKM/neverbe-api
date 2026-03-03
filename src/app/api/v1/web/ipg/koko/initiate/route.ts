@@ -25,13 +25,19 @@ export const POST = async (req: NextRequest) => {
     if (!merchantId || !apiKey || !privateKey || !baseUrl) {
       throw new Error("Koko credentials or base URL missing in environment.");
     }
-    console.log("[Koko Initiate API] Credentials and base URL loaded successfully");
+    console.log(
+      "[Koko Initiate API] Credentials and base URL loaded successfully",
+    );
 
     // --- Step 4: Construct callback URLs ---
     const returnUrl = `${baseUrl}/checkout/success/${orderId}`;
-    const cancelUrl = `${baseUrl}/checkout/fail?orderId=${orderId}`;
-    const responseUrl = `${baseUrl}/api/v1/ipg/koko/notify`;
-    console.log("[Koko Initiate API] Callback URLs:", { returnUrl, cancelUrl, responseUrl });
+    const cancelUrl = `${baseUrl}/checkout`;
+    const responseUrl = `${baseUrl}/api/v1/web/ipg/koko/notify`;
+    console.log("[Koko Initiate API] Callback URLs:", {
+      returnUrl,
+      cancelUrl,
+      responseUrl,
+    });
 
     // --- Step 5: Build data string (Koko v1.05) ---
     const dataString =
@@ -87,7 +93,7 @@ export const POST = async (req: NextRequest) => {
     console.error("❌ Koko initiate error:", error.message, error.stack);
     return NextResponse.json(
       { message: "Error initiating Koko payment", error: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 };

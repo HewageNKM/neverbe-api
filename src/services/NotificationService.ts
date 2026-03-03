@@ -51,7 +51,7 @@ export const calculateTotal = (items: OrderItem[]): number =>
 /** Send COD verification OTP with CAPTCHA and rate limiting */
 export const sendCODVerificationOTP = async (
   phone: string,
-  captchaToken: string
+  captchaToken: string,
 ) => {
   try {
     console.log(`[OTP Service] sendCODVerificationOTP called for ${phone}`);
@@ -90,7 +90,7 @@ export const sendCODVerificationOTP = async (
         return {
           success: false,
           message: `Please wait ${Math.ceil(
-            COOLDOWN_SECONDS - secondsSinceLastRequest
+            COOLDOWN_SECONDS - secondsSinceLastRequest,
           )} seconds before requesting a new code.`,
         };
       }
@@ -181,7 +181,7 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
       const newAttempts = (data.attempts || 0) + 1;
       await doc.ref.update({ attempts: newAttempts });
       console.warn(
-        `[OTP Service] Invalid OTP entered for ${phone}, attempts: ${newAttempts}`
+        `[OTP Service] Invalid OTP entered for ${phone}, attempts: ${newAttempts}`,
       );
       return { success: false, message: "Invalid OTP." };
     }
@@ -199,7 +199,7 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
 export const sendOrderConfirmedSMS = async (orderId: string) => {
   try {
     console.log(
-      `[Notification Service] sendOrderConfirmedSMS called for order: ${orderId}`
+      `[Notification Service] sendOrderConfirmedSMS called for order: ${orderId}`,
     );
 
     if (!TEXT_API_KEY) {
@@ -210,7 +210,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
     const order: Order = await getOrderByIdForInvoice(orderId);
     if (!order?.customer?.phone) {
       console.warn(
-        `[Notification Service] Missing customer phone for order: ${orderId}`
+        `[Notification Service] Missing customer phone for order: ${orderId}`,
       );
       return false;
     }
@@ -223,10 +223,9 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
       (order.discount || 0);
 
     const customerName = order.customer.name.split(" ")[0];
-    const invoiceDownloadUrl = `${BASE_URL}/checkout/success/${orderId}`;
     const text = `NEVERBE: Got it, ${customerName}. Order #${orderId.toUpperCase()} is confirmed. Total: Rs.${total.toFixed(
-      2
-    )}. Invoice: ${invoiceDownloadUrl}`;
+      2,
+    )}.`;
     const hashValue = generateHash(phone + text);
 
     const existing = await adminFirestore
@@ -238,7 +237,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
 
     if (!existing.empty) {
       console.warn(
-        `[Notification Service] Duplicate SMS detected for order: ${orderId}`
+        `[Notification Service] Duplicate SMS detected for order: ${orderId}`,
       );
       return false;
     }
@@ -257,7 +256,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     console.log(
-      `[Notification Service] SMS sent for order ${orderId} to ${phone}`
+      `[Notification Service] SMS sent for order ${orderId} to ${phone}`,
     );
 
     await adminFirestore.collection(NOTIFICATION_TRACKER).add({
@@ -272,7 +271,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
   } catch (error) {
     console.error(
       `[Notification Service] Failed to queue SMS for order ${orderId}:`,
-      error
+      error,
     );
     return false;
   }
@@ -285,7 +284,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
 export const sendOrderConfirmedEmail = async (orderId: string) => {
   try {
     console.log(
-      `[Notification Service] sendOrderConfirmedEmail called for order: ${orderId}`
+      `[Notification Service] sendOrderConfirmedEmail called for order: ${orderId}`,
     );
 
     if (!orderId) {
@@ -307,7 +306,7 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
 
     if (!email) {
       console.warn(
-        `[Notification Service] No valid email found for order: ${orderId}`
+        `[Notification Service] No valid email found for order: ${orderId}`,
       );
       return false;
     }
@@ -324,7 +323,7 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
 
     if (!existing.empty) {
       console.warn(
-        `[Notification Service] Duplicate Email detected for order: ${orderId}`
+        `[Notification Service] Duplicate Email detected for order: ${orderId}`,
       );
       return false;
     }
@@ -338,7 +337,7 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
     // We keep this calculation because 'subtotal' is rarely stored explicitly on the root
     const subtotalRaw = safeItems.reduce(
       (acc, item) => acc + (item.price || 0) * (item.quantity || 1),
-      0
+      0,
     );
 
     // USE STORED VALUES (No Recalculation)
@@ -404,13 +403,13 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
     });
 
     console.log(
-      `[Notification Service] Email queued successfully for ${orderId}`
+      `[Notification Service] Email queued successfully for ${orderId}`,
     );
     return true;
   } catch (error) {
     console.error(
       `[Notification Service] CRITICAL ERROR sending email for order ${orderId}:`,
-      error
+      error,
     );
     return false;
   }
