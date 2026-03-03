@@ -12,13 +12,15 @@ export const GET = async (req: NextRequest) => {
     const inStockParam = url.searchParams.get("inStock");
     const sizesParam = url.searchParams.get("sizes");
     const genderParam = url.searchParams.get("gender");
+    const brand = url.searchParams.get("brand") || undefined;
+    const category = url.searchParams.get("category") || undefined;
 
     const inStock =
       inStockParam === "true"
         ? true
         : inStockParam === "false"
-        ? false
-        : undefined;
+          ? false
+          : undefined;
 
     const sizes = sizesParam ? sizesParam.split(",").filter(Boolean) : [];
     const gender = genderParam?.toLowerCase() || "";
@@ -27,6 +29,8 @@ export const GET = async (req: NextRequest) => {
       page,
       size,
       tags,
+      brand,
+      category,
       inStock,
       sizes,
       gender,
@@ -35,6 +39,8 @@ export const GET = async (req: NextRequest) => {
     // Delegate to service layer for filtering
     const result = await getProductsFiltered({
       tags,
+      brand,
+      category,
       inStock,
       sizes,
       gender,
@@ -43,7 +49,7 @@ export const GET = async (req: NextRequest) => {
     });
 
     console.log(
-      `[Products API] Returning ${result.dataList.length} products (total: ${result.total})`
+      `[Products API] Returning ${result.dataList.length} products (total: ${result.total})`,
     );
 
     return NextResponse.json(result, { status: 200 });
@@ -51,7 +57,7 @@ export const GET = async (req: NextRequest) => {
     console.error("[Products API] Error:", error.message, error.stack);
     return NextResponse.json(
       { success: false, message: error.message || "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 };

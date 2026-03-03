@@ -13,6 +13,8 @@ import { searchProducts } from "./AlgoliaService";
 
 const buildAlgoliaFiltersForWeb = (options: {
   tags?: string[];
+  brand?: string;
+  category?: string;
   inStock?: boolean;
   sizes?: string[];
   gender?: string;
@@ -29,6 +31,14 @@ const buildAlgoliaFiltersForWeb = (options: {
 
   if (options.gender) {
     filters.push(`gender:"${options.gender}"`);
+  }
+
+  if (options.brand) {
+    filters.push(`brand:"${options.brand}"`);
+  }
+
+  if (options.category) {
+    filters.push(`category:"${options.category}"`);
   }
 
   if (options.tags && options.tags.length > 0) {
@@ -64,13 +74,16 @@ const mapAlgoliaHitsToProducts = (
 };
 
 // ====================== Products ======================
-export const getProducts = async (
-  tags?: string[],
-  inStock?: boolean,
-  page: number = 1,
-  size: number = 20,
-): Promise<{ total: number; dataList: Product[] }> => {
-  const filtersStr = buildAlgoliaFiltersForWeb({ tags, inStock });
+export const getProducts = async (options: {
+  tags?: string[];
+  brand?: string;
+  category?: string;
+  inStock?: boolean;
+  page?: number;
+  size?: number;
+}): Promise<{ total: number; dataList: Product[] }> => {
+  const { page = 1, size = 20, ...rest } = options;
+  const filtersStr = buildAlgoliaFiltersForWeb(rest);
   const { hits, nbHits } = await searchProducts("", {
     page: page - 1,
     hitsPerPage: size,
@@ -85,6 +98,8 @@ export const getProducts = async (
  */
 export interface ProductFilterOptions {
   tags?: string[];
+  brand?: string;
+  category?: string;
   inStock?: boolean;
   sizes?: string[];
   gender?: string;
