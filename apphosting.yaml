@@ -43,23 +43,34 @@ env:
 secrets:
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: FIREBASE_ADMIN_PRIVATE_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: FIREBASE_CLIENT_EMAIL
     secret: FIREBASE_CLIENT_EMAIL
+    availability: ["BUILD", "RUNTIME"]
   - variable: TEXT_API_KEY
     secret: TEXT_API_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: HASH_SECRET
     secret: HASH_SECRET
+    availability: ["BUILD", "RUNTIME"]
   - variable: KOKO_MERCHANT_ID
     secret: KOKO_MERCHANT_ID
+    availability: ["BUILD", "RUNTIME"]
   - variable: KOKO_API_KEY
     secret: KOKO_API_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: KOKO_PRIVATE_KEY
     secret: KOKO_PRIVATE_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: KOKO_PUBLIC_KEY
     secret: KOKO_PUBLIC_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: RECAPTCHA_SECRET_KEY
     secret: RECAPTCHA_SECRET_KEY
+    availability: ["BUILD", "RUNTIME"]
   - variable: PAYHERE_MERCHANT_SECRET
     secret: PAYHERE_MERCHANT_SECRET
+    availability: ["BUILD", "RUNTIME"]
   - variable: PAYHERE_MERCHANT_ID
     secret: PAYHERE_MERCHANT_ID
+    availability: ["BUILD", "RUNTIME"]
