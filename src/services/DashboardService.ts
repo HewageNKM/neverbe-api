@@ -622,7 +622,7 @@ export interface OrderStatusDistribution {
   pending: number;
   processing: number;
   shipped: number;
-  delivered: number;
+  completed: number;
   cancelled: number;
   refunded: number;
 }
@@ -666,7 +666,7 @@ export const getOrderStatusDistribution =
         pending: 0,
         processing: 0,
         shipped: 0,
-        delivered: 0,
+        completed: 0,
         cancelled: 0,
         refunded: 0,
       };
@@ -685,8 +685,8 @@ export const getOrderStatusDistribution =
           case "shipped":
             distribution.shipped++;
             break;
-          case "delivered":
-            distribution.delivered++;
+          case "completed":
+            distribution.completed++;
             break;
           case "cancelled":
             distribution.cancelled++;
