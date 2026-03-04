@@ -5,7 +5,7 @@ runConfig:
   cpu: 4
   memoryMiB: 8192
 
-# Public Environment Variables
+# Public Environment Variables (non-sensitive, fixed values)
 env:
   - variable: NEXT_PUBLIC_BASE_URL
     value: "https://www.neverbe.lk"
@@ -29,10 +29,6 @@ env:
     value: "neverbe-18307"
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
     value: "neverbe-18307.appspot.com"
-  - variable: NEXT_PUBLIC_ALGOLIA_SEARCH_API_KEY
-    value: "a511b0ae44b3411786428006f0eab919"
-  - variable: NEXT_PUBLIC_ALGOLIA_APP_ID
-    value: "T4W2OD5EXU"
   - variable: NEXT_PUBLIC_KOKO_REDIRECT_URL
     value: "https://qaapi.paykoko.com/api/merchants/orderCreate"
   - variable: NEXT_PUBLIC_WHATSAPP_NUMBER
@@ -40,6 +36,7 @@ env:
   - variable: NEXT_PUBLIC_PAYHERE_URL
     value: "https://payhere.lk/pay/checkout"
 
+# Secrets — pulled from Google Cloud Secret Manager at BUILD and RUNTIME
 secrets:
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: FIREBASE_ADMIN_PRIVATE_KEY
