@@ -4,16 +4,11 @@ import { getExchangesByOrderId } from "@/services/ExchangeService";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: { orderId: string } },
 ) {
   try {
-    const auth = await authorizeRequest(request, [
-      "super_admin",
-      "admin",
-      "manager",
-      "staff",
-    ]);
-    if (!auth.authorized) {
+    const authorized = await authorizeRequest(request, "view_orders");
+    if (!authorized) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
@@ -23,7 +18,7 @@ export async function GET(
     console.error("Error fetching exchanges:", error);
     return NextResponse.json(
       { message: error.message || "Failed to fetch exchanges" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
