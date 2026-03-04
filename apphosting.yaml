@@ -36,41 +36,42 @@ env:
   - variable: NEXT_PUBLIC_PAYHERE_URL
     value: "https://payhere.lk/pay/checkout"
 
-# Secrets — pulled from Google Cloud Secret Manager at BUILD and RUNTIME
+# Secrets — pulled from Google Cloud Secret Manager at RUNTIME only
+# BUILD availability is not used because the build phase does not require these secrets
 secrets:
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: FIREBASE_ADMIN_PRIVATE_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: FIREBASE_CLIENT_EMAIL
     secret: FIREBASE_CLIENT_EMAIL
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: TEXT_API_KEY
     secret: TEXT_API_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: HASH_SECRET
     secret: HASH_SECRET
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: KOKO_MERCHANT_ID
     secret: KOKO_MERCHANT_ID
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: KOKO_API_KEY
     secret: KOKO_API_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: KOKO_PRIVATE_KEY
     secret: KOKO_PRIVATE_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: KOKO_PUBLIC_KEY
     secret: KOKO_PUBLIC_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: RECAPTCHA_SECRET_KEY
     secret: RECAPTCHA_SECRET_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: PAYHERE_MERCHANT_SECRET
     secret: PAYHERE_MERCHANT_SECRET
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: PAYHERE_MERCHANT_ID
     secret: PAYHERE_MERCHANT_ID
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
-    availability: ["BUILD", "RUNTIME"]
+    availability: ["RUNTIME"]

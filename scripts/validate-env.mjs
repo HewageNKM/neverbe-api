@@ -11,7 +11,8 @@ if (existsSync(".env")) {
   console.log("[validate-env] No .env file found — using injected environment (production)");
 }
 
-const requiredEnvVars = [
+// Public env vars that must be available at BUILD time (set in apphosting.yaml env: block)
+const requiredBuildVars = [
   "NEXT_PUBLIC_BASE_URL",
   "NEXT_PUBLIC_API_URL",
   "NEXT_PUBLIC_ALGOLIA_APP_ID",
@@ -26,6 +27,11 @@ const requiredEnvVars = [
   "NEXT_PUBLIC_KOKO_REDIRECT_URL",
   "NEXT_PUBLIC_WHATSAPP_NUMBER",
   "NEXT_PUBLIC_PAYHERE_URL",
+];
+
+// Secrets that are only available at RUNTIME (injected by Cloud Run, not at build time)
+// These are checked separately and only warn — they are validated at runtime by the services themselves.
+const runtimeSecrets = [
   "FIREBASE_ADMIN_PRIVATE_KEY",
   "FIREBASE_CLIENT_EMAIL",
   "TEXT_API_KEY",
@@ -40,29 +46,36 @@ const requiredEnvVars = [
   "GEMINI_API_KEY",
 ];
 
-const missingVars = [];
+const missingBuildVars = requiredBuildVars.filter((v) => !process.env[v]);
 
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    missingVars.push(envVar);
-  }
-}
-
-if (missingVars.length > 0) {
+if (missingBuildVars.length > 0) {
   console.error(
-    `\n🚨 BUILD FAILED: Missing required environment variables:\n` +
-    missingVars.map((v) => `   - ${v}`).join("\n") +
-    `\nPlease ensure these are set in your .env file or deployment pipeline.\n`
+    `\n🚨 BUILD FAILED: Missing required public environment variables:\n` +
+    missingBuildVars.map((v) => `   - ${v}`).join("\n") +
+    `\nThese must be set in the env: section of apphosting.yaml.\n`
   );
   process.exit(1);
 }
 
-console.log("✅ All required environment variables are present.");
-console.log("\n--- Loaded Environment Variables ---");
-for (const envVar of requiredEnvVars) {
-  const val = process.env[envVar];
-  const strVal = String(val || "");
-  const last3 = strVal.length >= 3 ? strVal.slice(-3) : strVal;
-  console.log(`- ${envVar}: ****${last3}`);
+console.log("✅ All required build-time environment variables are present.\n");
+
+// Log public vars
+console.log("--- Public Env Vars (BUILD) ---");
+for (const envVar of requiredBuildVars) {
+  const val = process.env[envVar] || "";
+  const last3 = val.length >= 3 ? val.slice(-3) : val;
+  console.log(`  ${envVar}: ****${last3}`);
 }
-console.log("------------------------------------\n");
+
+// Log runtime secrets (may be empty at build time — that's expected)
+console.log("\n--- Runtime Secrets (available after deploy) ---");
+for (const envVar of runtimeSecrets) {
+  const val = process.env[envVar] || "";
+  if (val) {
+    const last3 = val.length >= 3 ? val.slice(-3) : val;
+    console.log(`  ${envVar}: ****${last3}`);
+  } else {
+    console.log(`  ${envVar}: (will be injected at runtime)`);
+  }
+}
+console.log("------------------------------------------------\n");
