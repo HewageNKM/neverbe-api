@@ -1,8 +1,15 @@
-import dotenv from "dotenv";
+import { existsSync } from "fs";
 
-// Load variables from .env file into process.env before checking
-// In production (Firebase App Hosting), secrets and envs are injected directly
-dotenv.config();
+// In local development, load .env file if it exists.
+// In Firebase App Hosting (Cloud Build / Cloud Run), secrets are already
+// injected into process.env directly — no .env file exists there.
+if (existsSync(".env")) {
+  const dotenv = await import("dotenv");
+  dotenv.config();
+  console.log("[validate-env] Loaded variables from .env (local development)");
+} else {
+  console.log("[validate-env] No .env file found — using injected environment (production)");
+}
 
 const requiredEnvVars = [
   "NEXT_PUBLIC_BASE_URL",
@@ -54,10 +61,8 @@ console.log("✅ All required environment variables are present.");
 console.log("\n--- Loaded Environment Variables ---");
 for (const envVar of requiredEnvVars) {
   const val = process.env[envVar];
-  // Ensure we have a string and handle short strings gracefully
   const strVal = String(val || "");
   const last3 = strVal.length >= 3 ? strVal.slice(-3) : strVal;
   console.log(`- ${envVar}: ****${last3}`);
 }
 console.log("------------------------------------\n");
-
