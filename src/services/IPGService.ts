@@ -11,7 +11,7 @@ export class IPGService {
     const merchantId = process.env.KOKO_MERCHANT_ID;
     const apiKey = process.env.KOKO_API_KEY;
     const privateKey = process.env.KOKO_PRIVATE_KEY;
-    const baseUrl = process.env.BASE_URL;
+    const baseUrl = process.env.WEB_BASE_URL;
     const apiUrl = process.env.API_URL;
 
     if (!merchantId || !apiKey || !privateKey || !baseUrl || !apiUrl) {

@@ -13,8 +13,10 @@ if (existsSync(".env")) {
 
 // Public env vars available at BUILD time (set in apphosting.yaml env: block)
 const requiredBuildVars = [
-  "BASE_URL",
+  "WEB_BASE_URL",
   "API_URL",
+  "POS_BASE_URL",
+  "ERP_BASE_URL",
   "ALGOLIA_APP_ID",
   "ALGOLIA_SEARCH_API_KEY",
   "FIREBASE_PROJECT_ID",

@@ -194,7 +194,7 @@ export const getBatchProductStock = async (
 // ====================== Sitemap ======================
 export const getProductsForSitemap = async () => {
   const products = await productRepository.findAllForSitemap();
-  const baseUrl = process.env.BASE_URL;
+  const baseUrl = process.env.WEB_BASE_URL;
   return products.map((p) => ({
     url: `${baseUrl}/collections/products/${p.id}`,
     lastModified: new Date(),
@@ -203,10 +203,10 @@ export const getProductsForSitemap = async () => {
 };
 
 export const getBrandForSitemap = async () =>
-  otherRepository.getBrandsForSitemap(process.env.BASE_URL || "");
+  otherRepository.getBrandsForSitemap(process.env.WEB_BASE_URL || "");
 
 export const getCategoriesForSitemap = async () =>
-  otherRepository.getCategoriesForSitemap(process.env.BASE_URL || "");
+  otherRepository.getCategoriesForSitemap(process.env.WEB_BASE_URL || "");
 
 // ====================== Payment Methods ======================
 export const getPaymentMethods = async () =>

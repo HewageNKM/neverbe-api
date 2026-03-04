@@ -5,12 +5,16 @@ runConfig:
   cpu: 4
   memoryMiB: 8192
 
-# Public Environment Variables — server-only, no NEXT_PUBLIC_ prefix needed
+# Server-side Environment Variables
 env:
-  - variable: BASE_URL
+  - variable: WEB_BASE_URL
     value: "https://www.neverbe.lk"
   - variable: API_URL
     value: "https://api.neverbe.lk"
+  - variable: POS_BASE_URL
+    value: "https://pos.neverbe.lk"
+  - variable: ERP_BASE_URL
+    value: "https://erp.neverbe.lk"
   - variable: ALGOLIA_APP_ID
     value: "T4W2OD5EXU"
   - variable: ALGOLIA_SEARCH_API_KEY
