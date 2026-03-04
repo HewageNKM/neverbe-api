@@ -51,3 +51,13 @@ if (missingVars.length > 0) {
 }
 
 console.log("✅ All required environment variables are present.");
+console.log("\n--- Loaded Environment Variables ---");
+for (const envVar of requiredEnvVars) {
+  const val = process.env[envVar];
+  // Ensure we have a string and handle short strings gracefully
+  const strVal = String(val || "");
+  const last3 = strVal.length >= 3 ? strVal.slice(-3) : strVal;
+  console.log(`- ${envVar}: ****${last3}`);
+}
+console.log("------------------------------------\n");
+
