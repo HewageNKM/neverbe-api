@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "algoliasearch": "^5.49.1",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
