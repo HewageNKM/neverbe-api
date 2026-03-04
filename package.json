@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 8080",
-    "build": "next build",
+    "build": "node scripts/validate-env.mjs && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -38,6 +38,7 @@
     "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^10.0.0",
     "babel-plugin-react-compiler": "1.0.0",
+    "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
