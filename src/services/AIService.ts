@@ -313,7 +313,7 @@ export const generateTags = async (
 ): Promise<string[]> => {
   try {
     const model = getGenAI().getGenerativeModel({
-      model: "gemini-2.0-flash-lite",
+      model: "gemini-3.1-flash-lite",
     });
 
     const prompt = `
@@ -349,7 +349,7 @@ export const processContextualChat = async (
   messages: { role: "user" | "model"; parts: [{ text: string }] }[],
 ): Promise<string> => {
   const model = getGenAI().getGenerativeModel({
-    model: "gemini-2.0-flash-lite-preview-02-05",
+    model: "gemini-3.1-flash-lite",
     systemInstruction: `You are an intelligent AI business assistant for the NeverBe ERP system.
 You have access to real-time business data through the tools provided. Always use these tools to fetch actual data whenever the user asks about orders, products, stock, revenue, sales, or any business metrics.
 Never say you "can't access" data — just call the appropriate tool.
