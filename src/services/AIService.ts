@@ -1,9 +1,21 @@
 import {
   GoogleGenerativeAI,
   FunctionDeclaration,
+  Tool,
+  Part,
+  Content,
   SchemaType,
 } from "@google/generative-ai";
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import {
+  getPopularItems,
+  getRecentOrders,
+  getLowStockAlerts,
+  getDailySnapshot,
+  getOverviewByDateRange,
+  getProfitMargins,
+  getRevenueByCategory,
+  getMonthlyComparison,
+} from "./DashboardService";
 
 let genAIInstance: GoogleGenerativeAI | null = null;
 const getGenAI = () => {
@@ -16,12 +28,283 @@ const getGenAI = () => {
   return genAIInstance;
 };
 
+// ─── Tool Definitions ─────────────────────────────────────────────────────────
+
+const AI_TOOLS: FunctionDeclaration[] = [
+  {
+    name: "getTopProducts",
+    description:
+      "Get the top selling products by sales volume for a given month and year. Use this when the user asks about popular products, best sellers, or top products.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Number of top products to return. Default is 10.",
+        },
+        month: {
+          type: SchemaType.NUMBER,
+          description:
+            "Month as a 0-indexed number (0=Jan, 11=Dec). Defaults to current month.",
+        },
+        year: {
+          type: SchemaType.NUMBER,
+          description: "4-digit year. Defaults to current year.",
+        },
+      },
+    },
+  },
+  {
+    name: "getRecentOrders",
+    description:
+      "Get the most recent orders from the system. Use this when the user asks about recent orders, last orders, latest transactions, or order history.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Number of recent orders to return. Default is 10.",
+        },
+      },
+    },
+  },
+  {
+    name: "getLowStockItems",
+    description:
+      "Get products that are running low on stock. Use this when the user asks about low stock, out of stock risks, or inventory alerts.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        threshold: {
+          type: SchemaType.NUMBER,
+          description:
+            "Stock quantity threshold. Items at or below this are considered low stock. Default is 5.",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max number of items to return. Default is 15.",
+        },
+      },
+    },
+  },
+  {
+    name: "getDailySnapshot",
+    description:
+      "Get today's business snapshot including revenue, orders, and key metrics. Use this when user asks about today's performance, daily summary, or current day stats.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
+  {
+    name: "getSalesOverview",
+    description:
+      "Get a sales and revenue overview for a specific date range. Use this when the user asks about sales for a period, revenue summary, or date-range analytics.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        from: {
+          type: SchemaType.STRING,
+          description: "Start date in ISO format (YYYY-MM-DD).",
+        },
+        to: {
+          type: SchemaType.STRING,
+          description: "End date in ISO format (YYYY-MM-DD).",
+        },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "getProfitMargins",
+    description:
+      "Get profit margin analysis for the business. Use this when the user asks about profits, margins, or profitability.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
+  {
+    name: "getRevenueByCategory",
+    description:
+      "Get revenue broken down by product category. Use this when the user asks about category performance or which categories generate the most revenue.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
+  {
+    name: "getMonthlyComparison",
+    description:
+      "Compare performance metrics between this month and last month. Use this when the user asks about monthly trends, growth, or comparisons.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
+  {
+    name: "queryFirestore",
+    description:
+      "Perform a direct query on specific Firestore collections to find information. Use this when the high-level tools do not provide the specific information needed.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        collectionName: {
+          type: SchemaType.STRING,
+          description:
+            "The name of the collection to query. You have access to ALL collections in the database.",
+        },
+        filters: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              field: { type: SchemaType.STRING },
+              operator: {
+                type: SchemaType.STRING,
+                format: "enum",
+                enum: ["==", ">", "<", ">=", "<=", "array-contains"],
+              },
+              value: { type: SchemaType.STRING },
+            },
+            required: ["field", "operator", "value"],
+          },
+          description: "List of filters to apply to the query.",
+        },
+        orderBy: {
+          type: SchemaType.STRING,
+          description: "Field to order by.",
+        },
+        orderDirection: {
+          type: SchemaType.STRING,
+          format: "enum",
+          enum: ["asc", "desc"],
+          description: "Direction to order by.",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max number of documents to return. Default 20, Max 50.",
+        },
+      },
+      required: ["collectionName"],
+    },
+  },
+];
+
+// ─── Tool Executor ─────────────────────────────────────────────────────────────
+
+const executeTool = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> => {
+  const now = new Date();
+
+  switch (name) {
+    case "getTopProducts":
+      return await getPopularItems(
+        (args.limit as number) || 10,
+        (args.month as number) ?? now.getMonth(),
+        (args.year as number) ?? now.getFullYear(),
+      );
+
+    case "getRecentOrders":
+      return await getRecentOrders((args.limit as number) || 10);
+
+    case "getLowStockItems":
+      return await getLowStockAlerts(
+        (args.threshold as number) || 5,
+        (args.limit as number) || 15,
+      );
+
+    case "getDailySnapshot":
+      return await getDailySnapshot();
+
+    case "getSalesOverview": {
+      const startDate = new Date(args.from as string);
+      const endDate = new Date(args.to as string);
+      endDate.setHours(23, 59, 59, 999);
+      return await getOverviewByDateRange(startDate, endDate);
+    }
+
+    case "getProfitMargins":
+      return await getProfitMargins();
+
+    case "getRevenueByCategory":
+      return await getRevenueByCategory();
+
+    case "getMonthlyComparison":
+      return await getMonthlyComparison();
+
+    case "queryFirestore": {
+      const {
+        collectionName,
+        filters,
+        orderBy,
+        orderDirection,
+        limit: resultLimit,
+      } = args as {
+        collectionName: string;
+        filters?: Array<{
+          field: string;
+          operator: "==" | ">" | "<" | ">=" | "<=" | "array-contains";
+          value: unknown;
+        }>;
+        orderBy?: string;
+        orderDirection?: "asc" | "desc";
+        limit?: number;
+      };
+
+      const { adminFirestore } = await import("@/firebase/firebaseAdmin");
+      let query: any = adminFirestore.collection(collectionName);
+
+      // Apply filters
+      if (Array.isArray(filters)) {
+        filters.forEach(
+          (f: { field: string; operator: string; value: unknown }) => {
+            // Automatic type conversion for numbers/booleans if needed
+            let val = f.value;
+            if (val === "true") val = true;
+            if (val === "false") val = false;
+            if (
+              !isNaN(Number(val)) &&
+              typeof val === "string" &&
+              val.trim() !== ""
+            ) {
+              val = Number(val);
+            }
+
+            query = query.where(f.field, f.operator, val);
+          },
+        );
+      }
+
+      // Apply ordering
+      if (orderBy) {
+        query = query.orderBy(orderBy, orderDirection || "asc");
+      }
+
+      // Apply limit
+      const finalLimit = Math.min(resultLimit || 20, 50);
+      query = query.limit(finalLimit);
+
+      const snapshot = await query.get();
+      return snapshot.docs.map(
+        (doc: { id: string; data: () => Record<string, unknown> }) => ({
+          id: doc.id,
+          ...doc.data(),
+        }),
+      );
+    }
+
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+};
+
+// ─── Public Methods ────────────────────────────────────────────────────────────
+
 /**
  * Global AI method to generate tags/keywords from any text.
- * @param contextDescription - A description of what the AI should extract (e.g., "Extract tags for a product").
- * @param content - The actual text/content to extract tags from.
- * @param maxTags - Optional maximum number of tags to return (default 15)
- * @returns Array of unique, lowercase tags
  */
 export const generateTags = async (
   contextDescription: string,
@@ -57,117 +340,87 @@ export const generateTags = async (
   }
 };
 
+/**
+ * Context-aware conversational AI chat with Gemini Function Calling.
+ * The AI can query real Firestore data (orders, products, inventory, etc.) on demand.
+ */
 export const processContextualChat = async (
   contextData: Record<string, unknown>,
   messages: { role: "user" | "model"; parts: [{ text: string }] }[],
 ): Promise<string> => {
-  try {
-    const readFirestoreDeclaration: FunctionDeclaration = {
-      name: "readFirestore",
-      description:
-        "Read data from a Firestore collection based on optional where conditions.",
-      parameters: {
-        type: SchemaType.OBJECT,
-        properties: {
-          collectionName: {
-            type: SchemaType.STRING,
-            description:
-              "The name of the Firestore collection to read from (e.g., 'products', 'users', 'orders').",
-          },
-          limit: {
-            type: SchemaType.INTEGER,
-            description:
-              "Optional limit for the number of documents to return (max 50, default 10).",
-          },
-        },
-        required: ["collectionName"],
-      },
-    };
+  const model = getGenAI().getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: `You are an intelligent AI business assistant for the NeverBe ERP system.
+You have access to real-time business data through the tools provided. Always use these tools to fetch actual data whenever the user asks about orders, products, stock, revenue, sales, or any business metrics.
+Never say you "can't access" data — just call the appropriate tool.
 
-    const model = getGenAI().getGenerativeModel({
-      model: "gemini-2.0-flash-lite", // Use flash lite for general chat tasks
-      systemInstruction: `You are an intelligent AI assistant for the NEVERBE ERP system. 
-You are speaking to an admin user. You must be able to fluently understand and respond in Sinhala if the user speaks in Sinhala, or English if they speak English.
+Rules:
+- Respond in Sinhala if the user writes in Sinhala. Respond in English if they write in English.
+- Do NOT use Singlish.
+- Format responses neatly using markdown (tables, bullet points, etc.) for data-heavy answers.
+- When showing monetary values, prefix with "Rs." (Sri Lankan Rupees).
+- After fetching data, always provide a brief, helpful analysis or insight, not just raw data.
 
-Here is the context data for the current item/page the admin is viewing:
-${JSON.stringify(contextData, null, 2)}
+Current page context (optional, may be empty):
+${JSON.stringify(contextData, null, 2)}`,
+    tools: [{ functionDeclarations: AI_TOOLS } as Tool],
+  });
 
-You have access to the Firestore database through the readFirestore tool. Use it to look up information from collections like 'products', 'users', or 'orders' when necessary to answer the user's questions.
+  // Build history for multi-turn chat (all except the last user message)
+  const history: Content[] = messages.slice(0, -1).map((m) => ({
+    role: m.role,
+    parts: m.parts as Part[],
+  }));
 
-Provide helpful, advanced insights based on this context and any data you read from the database. Do not use Singlish.`,
-      tools: [
-        {
-          functionDeclarations: [readFirestoreDeclaration],
-        },
-      ],
-    });
+  const lastMessage = messages[messages.length - 1].parts[0].text;
+  const chat = model.startChat({ history });
 
-    // Start chat with history (excluding the very last user message which we will send now)
-    const history = messages.slice(0, -1);
-    const lastMessage = messages[messages.length - 1].parts[0].text;
+  // ── Agentic Loop: keep calling tools until Gemini gives a final text response ──
+  let response = await chat.sendMessage(lastMessage);
 
-    const chat = model.startChat({
-      history: history,
-    });
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const candidate = response.response.candidates?.[0];
+    if (!candidate) break;
 
-    let result = await chat.sendMessage(lastMessage);
-    let call = result.response.functionCalls()?.[0];
-
-    // Simple loop for function calling (handles up to 3 turns)
-    let turns = 0;
-    while (call && turns < 3) {
-      turns++;
-
-      if (call.name === "readFirestore") {
-        const args = call.args as { collectionName: string; limit?: number };
-        const collectionName = args.collectionName;
-        const limit = Math.min(args.limit || 10, 50);
-
-        try {
-          const snapshot = await adminFirestore
-            .collection(collectionName)
-            .limit(limit)
-            .get();
-
-          const data = snapshot.docs.map((doc) => {
-            const docData = doc.data();
-            // Basic timestamp serialization to avoid error when passing back to gemini
-            for (const key in docData) {
-              if (docData[key] && typeof docData[key].toDate === "function") {
-                docData[key] = docData[key].toDate().toISOString();
-              }
-            }
-            return { id: doc.id, ...docData };
-          });
-
-          result = await chat.sendMessage([
-            {
-              functionResponse: {
-                name: "readFirestore",
-                response: { data },
-              },
-            },
-          ]);
-        } catch (dbError: any) {
-          result = await chat.sendMessage([
-            {
-              functionResponse: {
-                name: "readFirestore",
-                response: {
-                  error: dbError.message || "Failed to read from Firestore",
-                },
-              },
-            },
-          ]);
-        }
-      }
-
-      call = result.response.functionCalls()?.[0];
+    // Check if Gemini wants to call a function
+    const functionCalls = response.response.functionCalls();
+    if (!functionCalls || functionCalls.length === 0) {
+      // No more tool calls — return the final text response
+      break;
     }
 
-    return result.response.text();
-  } catch (error) {
-    console.error("Error processing AI chat:", error);
-    throw new Error("Failed to process AI chat response");
+    // Execute all requested function calls in parallel
+    const toolResultParts: Part[] = await Promise.all(
+      functionCalls.map(async (call) => {
+        try {
+          console.log(`[AIService] Calling tool: ${call.name}`, call.args);
+          const result = await executeTool(
+            call.name,
+            call.args as Record<string, unknown>,
+          );
+          console.log(`[AIService] Tool ${call.name} returned result`);
+          return {
+            functionResponse: {
+              name: call.name,
+              response: { result },
+            },
+          } as Part;
+        } catch (err) {
+          console.error(`[AIService] Tool ${call.name} failed:`, err);
+          return {
+            functionResponse: {
+              name: call.name,
+              response: { error: (err as Error).message },
+            },
+          } as Part;
+        }
+      }),
+    );
+
+    // Send tool results back to Gemini and continue the loop
+    response = await chat.sendMessage(toolResultParts);
   }
+
+  return response.response.text();
 };
