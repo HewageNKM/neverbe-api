@@ -785,6 +785,20 @@ export const calculateCartDiscount = async (
         );
         continue;
       }
+    } else if (
+      promo.applicableProducts &&
+      promo.applicableProducts.length > 0
+    ) {
+      // Legacy applicableProducts eligibility check
+      const hasApplicableProduct = cartItems.some((item) =>
+        promo.applicableProducts!.includes(item.productId),
+      );
+      if (!hasApplicableProduct) {
+        console.log(
+          `[PromotionService] Skipped ${promo.id}: Applicable products check failed`,
+        );
+        continue;
+      }
     }
 
     // Condition Checks
@@ -792,15 +806,18 @@ export const calculateCartDiscount = async (
 
     // Collect all SPECIFIC_PRODUCT values into one array for easier checking (Frontend parity)
     const specificProductIds: string[] = [];
-    promo.conditions.forEach((condition: any) => {
-      if (condition.type === "SPECIFIC_PRODUCT") {
-        if (condition.value) specificProductIds.push(condition.value);
-        if (condition.productIds)
-          specificProductIds.push(...condition.productIds);
-      }
-    });
+    if (promo.conditions) {
+      promo.conditions.forEach((condition: any) => {
+        if (condition.type === "SPECIFIC_PRODUCT") {
+          if (condition.value) specificProductIds.push(condition.value);
+          if (condition.productIds)
+            specificProductIds.push(...condition.productIds);
+        }
+      });
+    }
 
-    for (const condition of promo.conditions) {
+    if (promo.conditions) {
+      for (const condition of promo.conditions) {
       if (condition.type === "MIN_AMOUNT") {
         if (cartTotal < Number(condition.value)) {
           console.log(
@@ -924,11 +941,36 @@ export const calculateCartDiscount = async (
     const action = promo.actions[0]; // Assuming single action for now
 
     // Get eligible cart items for discount calculation
-    const eligibleItems =
+    let eligibleItems = cartItems;
+
+    if (
       promo.applicableProductVariants &&
       promo.applicableProductVariants.length > 0
-        ? getEligibleCartItems(cartItems, promo.applicableProductVariants)
-        : cartItems;
+    ) {
+      eligibleItems = getEligibleCartItems(
+        cartItems,
+        promo.applicableProductVariants,
+      );
+    } else if (specificProductIds.length > 0) {
+      // Filter by SPECIFIC_PRODUCT conditions
+      eligibleItems = cartItems.filter((item) =>
+        specificProductIds.includes(item.productId),
+      );
+    } else if (
+      promo.applicableProducts &&
+      promo.applicableProducts.length > 0
+    ) {
+      // Fallback for legacy applicableProducts
+      eligibleItems = cartItems.filter((item) =>
+        promo.applicableProducts!.includes(item.productId),
+      );
+    }
+
+    if (promo.excludedProducts && promo.excludedProducts.length > 0) {
+      eligibleItems = eligibleItems.filter(
+        (item) => !promo.excludedProducts!.includes(item.productId),
+      );
+    }
 
     const eligibleTotal = eligibleItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
