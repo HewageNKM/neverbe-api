@@ -162,7 +162,7 @@ export const updateOrder = async (order: Order, orderId: string) => {
     }
 
     // 🧾 Update Firestore order
-    const orderUpdate = {
+    const orderUpdate: any = {
       paymentStatus: order.paymentStatus,
       status: order.status,
       updatedAt: FieldValue.serverTimestamp(),
@@ -174,6 +174,9 @@ export const updateOrder = async (order: Order, orderId: string) => {
         },
       }),
     };
+
+    if (order.trackingNumber !== undefined) orderUpdate.trackingNumber = order.trackingNumber;
+    if (order.courier !== undefined) orderUpdate.courier = order.courier;
 
     await orderRef.set(orderUpdate, { merge: true });
 
