@@ -23,7 +23,10 @@ export interface Order {
   couponDiscount?: number;
   promotionDiscount?: number;
   appliedPromotionId?: string;
-  appliedPromotionIds?: string[]; // All stacked promotion IDs
+  appliedPromotionIds?: string[];
+
+  trackingNumber?: string;
+  courier?: string;
 
   createdAt: Timestamp | string;
   updatedAt: Timestamp | string;
