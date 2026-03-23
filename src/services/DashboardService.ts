@@ -216,11 +216,11 @@ export const getYearlySalesPerformance = async (
       const createdAt = (data.createdAt as Timestamp)?.toDate?.();
       if (createdAt) {
         const monthIndex = createdAt.getMonth();
-        const source = data.from?.toString().toLowerCase() || "store";
-        if (source === "website") {
-          websiteOrders[monthIndex]++;
-        } else {
+        const source = data.from?.toString().toLowerCase();
+        if (source === "store") {
           storeOrders[monthIndex]++;
+        } else {
+          websiteOrders[monthIndex]++;
         }
       }
     });
