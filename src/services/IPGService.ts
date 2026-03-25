@@ -105,18 +105,21 @@ export class IPGService {
       address,
       city,
       items,
-      returnUrl,
-      cancelUrl,
-      notifyUrl,
     } = body;
 
-    const merchantId = process.env.PAYHERE_MERCHANT_ID!;
-    const merchantSecret = process.env.PAYHERE_MERCHANT_SECRET!;
+    const merchantId = process.env.PAYHERE_MERCHANT_ID;
+    const merchantSecret = process.env.PAYHERE_MERCHANT_SECRET;
+    const baseUrl = process.env.WEB_BASE_URL;
+    const apiUrl = process.env.API_URL;
     const currency = "LKR";
 
-    if (!merchantId || !merchantSecret) {
-      throw new Error("PayHere merchant credentials missing in environment.");
+    if (!merchantId || !merchantSecret || !baseUrl || !apiUrl) {
+      throw new Error("PayHere credentials or base URL missing in environment.");
     }
+
+    const returnUrl = `${baseUrl}/checkout/success/${orderId}`;
+    const cancelUrl = `${baseUrl}/checkout`;
+    const notifyUrl = `${apiUrl}/api/v1/web/ipg/payhere/notify`;
 
     const amountFormatted = parseFloat(amount)
       .toLocaleString("en-US", {

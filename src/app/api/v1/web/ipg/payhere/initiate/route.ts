@@ -1,8 +1,8 @@
-import { verifyToken } from "@/services/WebAuthService";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { IPGService } from "@/services/IPGService";
+import { verifyToken } from "@/services/WebAuthService";
 
-export const POST = async (req: Request) => {
+export const POST = async (req: NextRequest) => {
   try {
     console.log("[PayHere Initiate API] Incoming request");
 
@@ -29,10 +29,10 @@ export const POST = async (req: Request) => {
 
     console.log("✅ PayHere initiate payload prepared:", payload);
     return NextResponse.json(payload, { status: 200 });
-  } catch (err: any) {
-    console.error("[PayHere Initiate API] Error:", err.message, err.stack);
+  } catch (error: any) {
+    console.error("❌ PayHere initiate error:", error.message, error.stack);
     return NextResponse.json(
-      { message: "Error generating PayHere payload", error: err.message },
+      { message: "Error generating PayHere payload", error: error.message },
       { status: 500 },
     );
   }
