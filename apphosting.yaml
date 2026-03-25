@@ -61,3 +61,6 @@ env:
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
     availability: ["RUNTIME"]
+  - variable: GOOGLE_PLACES_API_KEY
+    secret: GOOGLE_PLACES_API_KEY
+    availability: ["RUNTIME"]
