@@ -1,6 +1,10 @@
 import { BaseRepository } from "./BaseRepository";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { Coupon, CouponUsage, ProductVariantTarget } from "@/interfaces";
+import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+
+dayjs.extend(customParseFormat);
 
 interface CartItem {
   itemId: string;
@@ -38,14 +42,30 @@ export class CouponRepository extends BaseRepository<Coupon> {
    * Check if coupon is within active date range
    */
   private isWithinDateRange(coupon: Coupon): boolean {
-    const now = new Date();
-    const startDate = coupon.startDate
-      ? new Date(coupon.startDate as string)
-      : null;
-    const endDate = coupon.endDate ? new Date(coupon.endDate as string) : null;
+    const now = dayjs();
+    const parseDate = (d: any) => {
+      if (!d) return null;
+      if (d instanceof Timestamp) return dayjs(d.toDate());
+      if (typeof d === "string") {
+        const formats = [
+          "DD/MM/YYYY, hh:mm:ss a",
+          "DD/MM/YYYY, h:mm:ss a",
+          "DD/MM/YYYY",
+          "YYYY-MM-DD",
+        ];
+        for (const f of formats) {
+          const p = dayjs(d, f, true);
+          if (p.isValid()) return p;
+        }
+      }
+      return dayjs(d);
+    };
 
-    if (startDate && now < startDate) return false;
-    if (endDate && now > endDate) return false;
+    const startDate = parseDate(coupon.startDate);
+    const endDate = parseDate(coupon.endDate);
+
+    if (startDate && now.isBefore(startDate)) return false;
+    if (endDate && now.isAfter(endDate)) return false;
     return true;
   }
 
@@ -67,13 +87,9 @@ export class CouponRepository extends BaseRepository<Coupon> {
    * Find all active public coupons (for display on offers page)
    */
   async findActivePublic(): Promise<Coupon[]> {
-    const now = new Date();
-
     const snapshot = await this.collection
       .where("isActive", "==", true)
       .where("isDeleted", "==", false)
-      .where("endDate", ">=", now)
-      .where("startDate", "<=", now)
       .get();
 
     return snapshot.docs

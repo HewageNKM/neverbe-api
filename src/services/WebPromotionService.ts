@@ -4,6 +4,10 @@ import { promotionRepository } from "@/repositories/PromotionRepository";
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Coupon } from "@/interfaces/Coupon";
+import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+
+dayjs.extend(customParseFormat);
 
 /**
  * PromotionService - Business logic for promotions, coupons, and combos
@@ -70,21 +74,34 @@ export const validateCoupon = async (
   }
 
   // 2. Date Check
-  const now = new Date();
-  const startDate =
-    coupon.startDate instanceof Timestamp
-      ? coupon.startDate.toDate()
-      : new Date(coupon.startDate as string);
-  const endDate = coupon.endDate
-    ? coupon.endDate instanceof Timestamp
-      ? coupon.endDate.toDate()
-      : new Date(coupon.endDate as string)
-    : null;
+  const now = dayjs();
+  const parseDate = (d: any) => {
+    if (!d) return null;
+    if (d instanceof Timestamp) return dayjs(d.toDate());
+    if (typeof d === "string") {
+      // Try specific format first
+      const formats = [
+        "DD/MM/YYYY, hh:mm:ss a",
+        "DD/MM/YYYY, h:mm:ss a",
+        "DD/MM/YYYY",
+        "YYYY-MM-DD",
+      ];
+      for (const f of formats) {
+        const p = dayjs(d, f, true);
+        if (p.isValid()) return p;
+      }
+      return dayjs(d); // Fallback
+    }
+    return dayjs(d);
+  };
 
-  if (now < startDate) {
+  const startDate = parseDate(coupon.startDate);
+  const endDate = parseDate(coupon.endDate);
+
+  if (startDate && now.isBefore(startDate)) {
     return { valid: false, discount: 0, message: "Coupon has not started yet" };
   }
-  if (endDate && now > endDate) {
+  if (endDate && now.isAfter(endDate)) {
     return { valid: false, discount: 0, message: "Coupon has expired" };
   }
 
