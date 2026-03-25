@@ -607,3 +607,28 @@ export const getDealsProductsFiltered = async (
   const { tags, inStock, sizes, gender, page = 1, size = 20 } = options;
   return getDealsProducts(page, size, tags, inStock, gender, sizes);
 };
+
+// ====================== Search Web Products ======================
+export const searchWebProducts = async (
+  query: string,
+  options: {
+    page?: number;
+    size?: number;
+  } = {},
+): Promise<{ total: number; dataList: Product[] }> => {
+  const { page = 1, size = 20 } = options;
+  
+  // Apply standard web filters (only active, listed, non-deleted)
+  const filtersStr = "status:true AND listing:true AND isDeleted:false";
+
+  const { hits, nbHits } = await searchProducts(query, {
+    page: page - 1,
+    hitsPerPage: size,
+    filters: filtersStr,
+  });
+
+  const products = mapAlgoliaHitsToProducts(hits);
+  const enriched = await enrichProductsWithLabels(products);
+
+  return { total: nbHits, dataList: enriched };
+};
