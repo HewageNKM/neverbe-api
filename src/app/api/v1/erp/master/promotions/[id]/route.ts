@@ -58,7 +58,7 @@ export const PUT = async (req: NextRequest, { params }: Props) => {
         } catch {
           data[key] = value;
         }
-      } else if (key === "stackable") {
+      } else if (key === "stackable" || key === "isActive") {
         data[key] = value === "true";
       } else {
         data[key] = value;

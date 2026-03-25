@@ -82,7 +82,8 @@ export const createPromotion = async (
     startDate: data.startDate ? new Date(data.startDate as any) : null,
     endDate: data.endDate ? new Date(data.endDate as any) : null,
     usageCount: 0,
-    isActive: Boolean(data.isActive),
+    isActive: String(data.isActive) === "true",
+    stackable: String(data.stackable) === "true",
     isDeleted: false,
     createdAt: now,
     updatedAt: now,
@@ -134,10 +135,13 @@ export const updatePromotion = async (
 
   // Enforce boolean types for status flags
   if ("isActive" in updateData) {
-    payload.isActive = Boolean(updateData.isActive);
+    payload.isActive = String(updateData.isActive) === "true";
+  }
+  if ("stackable" in updateData) {
+    payload.stackable = String(updateData.stackable) === "true";
   }
   if ("isDeleted" in updateData) {
-    payload.isDeleted = Boolean(updateData.isDeleted);
+    payload.isDeleted = String(updateData.isDeleted) === "true";
   }
 
   await docRef.update(payload);

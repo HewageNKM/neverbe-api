@@ -52,7 +52,7 @@ export const POST = async (req: NextRequest) => {
         } catch {
           data[key] = value;
         }
-      } else if (key === "stackable") {
+      } else if (key === "stackable" || key === "isActive") {
         data[key] = value === "true";
       } else {
         data[key] = value;
