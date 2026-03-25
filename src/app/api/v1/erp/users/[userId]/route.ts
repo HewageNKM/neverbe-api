@@ -15,7 +15,14 @@ export const PUT = async (
     }
 
     const { userId } = await params;
-    const body: Partial<User> = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body: Partial<User> = JSON.parse(dataString);
 
     if (!userId) {
       return errorResponse("User ID is required", 400);

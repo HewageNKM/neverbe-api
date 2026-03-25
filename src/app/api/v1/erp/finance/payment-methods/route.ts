@@ -25,7 +25,14 @@ export async function POST(req: Request) {
     const authorized = await authorizeRequest(req, "manage_payment_methods");
     if (!authorized) return errorResponse("Unauthorized", 401);
 
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body = JSON.parse(dataString);
     const { name, fee, status, available, description, paymentId } = body;
 
     if (!name) {

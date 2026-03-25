@@ -8,7 +8,14 @@ export const POST = async (req: NextRequest) => {
     // Usually public but maybe with a session token.
     // For now, let's keep it open or check for a user limit later.
 
-    const data = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const data = JSON.parse(dataString);
     const { code, userId, cartTotal, cartItems } = data;
 
     if (!code) {

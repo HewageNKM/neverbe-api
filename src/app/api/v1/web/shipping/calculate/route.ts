@@ -4,7 +4,14 @@ import { BagItem } from "@/interfaces/BagItem";
 
 export const POST = async (req: NextRequest) => {
   try {
-    const { items } = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json({ cost: 0 });
+    }
+
+    const { items } = JSON.parse(dataString);
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ cost: 0 });

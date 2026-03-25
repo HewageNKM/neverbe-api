@@ -16,7 +16,14 @@ export async function PUT(
     if (!authorized) return errorResponse("Unauthorized", 401);
 
     const { id } = await params;
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body = JSON.parse(dataString);
 
     const updateData: any = {};
     if (body.name !== undefined) updateData.name = body.name;

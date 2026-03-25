@@ -11,7 +11,14 @@ export const PUT = async (
 ) => {
   try {
     const { id } = await context.params;
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body = JSON.parse(dataString);
 
     await updateShippingRule(id, body);
 

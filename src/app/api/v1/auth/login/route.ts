@@ -9,7 +9,14 @@ export const POST = async (req: NextRequest) => {
       return errorResponse("Unauthorized", 401);
     }
 
-    const { uid } = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const { uid } = JSON.parse(dataString);
 
     if (!uid) {
       return errorResponse("Missing User ID", 400);

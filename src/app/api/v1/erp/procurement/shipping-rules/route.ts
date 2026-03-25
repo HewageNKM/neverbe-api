@@ -23,7 +23,14 @@ export const POST = async (req: NextRequest) => {
   try {
     const authorized = await authorizeRequest(req, "update_shipping");
     if (!authorized) return errorResponse("Unauthorized", 401);
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body = JSON.parse(dataString);
     const { name, minWeight, maxWeight, rate, isActive } = body;
 
     if (

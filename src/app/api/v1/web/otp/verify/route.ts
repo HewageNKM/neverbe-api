@@ -10,8 +10,18 @@ export const POST = async (req: NextRequest) => {
     const idToken = await verifyToken(req);
     console.log("[COD OTP Verification API] Token verified:", idToken.uid);
 
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json(
+        { success: false, message: "Missing data field" },
+        { status: 400 },
+      );
+    }
+
     // Parse request body
-    const body = await req.json();
+    const body = JSON.parse(dataString);
     const { phoneNumber, otp } = body;
     console.log("[COD OTP Verification API] Request body:", body);
 

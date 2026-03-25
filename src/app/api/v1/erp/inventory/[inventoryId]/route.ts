@@ -19,7 +19,14 @@ export const PUT = async (
       return errorResponse("Inventory ID is required", 400);
     }
 
-    const data = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const data = JSON.parse(dataString);
 
     // Validate quantity
     if (

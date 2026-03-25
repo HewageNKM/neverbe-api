@@ -30,7 +30,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json({ message: "Missing data field" }, { status: 400 });
+    }
+
+    const body = JSON.parse(dataString);
     const roleId = await createRole(body);
     return NextResponse.json(
       { message: "Role created", roleId },

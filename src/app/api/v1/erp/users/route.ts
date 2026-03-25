@@ -113,7 +113,14 @@ export const POST = async (req: Request) => {
       return errorResponse("Unauthorized", 401);
     }
 
-    const body: User = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body: User = JSON.parse(dataString);
     if (!body) {
       return errorResponse("Invalid request body", 400);
     }

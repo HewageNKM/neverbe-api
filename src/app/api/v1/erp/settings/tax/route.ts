@@ -20,7 +20,14 @@ export const PUT = async (req: Request) => {
     const response = await authorizeRequest(req, "update_tax_settings");
     if (!response) return errorResponse("Unauthorized", 401);
 
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const body = JSON.parse(dataString);
     const settings = await updateTaxSettings(body);
     return NextResponse.json(settings);
   } catch (error: any) {

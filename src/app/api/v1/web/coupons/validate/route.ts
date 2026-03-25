@@ -3,7 +3,17 @@ import { validateCoupon } from "@/services/WebPromotionService";
 
 export const POST = async (req: NextRequest) => {
   try {
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json(
+        { valid: false, message: "Missing data field" },
+        { status: 400 }
+      );
+    }
+
+    const body = JSON.parse(dataString);
     const { code, cartTotal, cartItems, userId } = body;
 
     if (!code) {

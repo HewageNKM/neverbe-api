@@ -11,7 +11,17 @@ export const POST = async (req: Request) => {
     console.log("[PayHere Initiate API] Token verified:", idToken.uid);
 
     // --- Step 2: Parse request body ---
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json(
+        { error: "Missing data field" },
+        { status: 400 }
+      );
+    }
+
+    const body = JSON.parse(dataString);
     console.log("[PayHere Initiate API] Request body:", body);
 
     // --- Step 3: Generate payload via IPGService ---

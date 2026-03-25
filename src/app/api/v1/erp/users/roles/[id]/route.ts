@@ -36,7 +36,14 @@ export async function PUT(
   }
 
   try {
-    const body = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json({ message: "Missing data field" }, { status: 400 });
+    }
+
+    const body = JSON.parse(dataString);
     await updateRole(id, body);
     return NextResponse.json({ message: "Role updated" });
   } catch (e: any) {

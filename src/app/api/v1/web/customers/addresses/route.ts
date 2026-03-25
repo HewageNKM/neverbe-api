@@ -21,8 +21,15 @@ export async function POST(req: Request) {
     const token = await verifyToken(req);
     const uid = token.uid;
 
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return NextResponse.json({ error: "Missing data field" }, { status: 400 });
+    }
+
     // Parse body
-    const body = await req.json();
+    const body = JSON.parse(dataString);
     const { type, address, city, phone, isDefault } = body;
 
     // Validate type

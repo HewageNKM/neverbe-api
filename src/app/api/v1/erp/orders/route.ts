@@ -50,7 +50,14 @@ export const POST = async (req: NextRequest) => {
     const authorization = await authorizeOrderRequest(req);
     if (!authorization) return errorResponse("Unauthorized", 401);
 
-    const orderData: Partial<Order> = await req.json();
+    const formData = await req.formData();
+    const dataString = formData.get("data") as string;
+
+    if (!dataString) {
+      return errorResponse("Missing data field", 400);
+    }
+
+    const orderData: Partial<Order> = JSON.parse(dataString);
     await addOrder(orderData);
     return NextResponse.json("Order Created Successfully");
   } catch (error: any) {
