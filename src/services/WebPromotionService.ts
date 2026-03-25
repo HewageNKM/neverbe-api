@@ -219,24 +219,33 @@ export const validateCoupon = async (
 
   // 10. Applicable Categories Check
   if (coupon.applicableCategories && coupon.applicableCategories.length > 0) {
-    const productIds = cartItems.map((item) => item.itemId);
-    const productsSnapshot = await adminFirestore
-      .collection("products")
-      .where("__name__", "in", productIds.slice(0, 10))
-      .get();
+    const productIds = cartItems.map((item) => item.itemId).filter(Boolean);
 
-    const productCategories = productsSnapshot.docs.map(
-      (doc) => doc.data().category
-    );
-    const hasApplicableCategory = productCategories.some((cat) =>
-      coupon.applicableCategories!.includes(cat)
-    );
+    if (productIds.length > 0) {
+      const productsSnapshot = await adminFirestore
+        .collection("products")
+        .where("__name__", "in", productIds.slice(0, 10))
+        .get();
 
-    if (!hasApplicableCategory) {
+      const productCategories = productsSnapshot.docs.map(
+        (doc) => doc.data()?.category
+      );
+      const hasApplicableCategory = productCategories.some(
+        (cat) => cat && coupon.applicableCategories!.includes(cat)
+      );
+
+      if (!hasApplicableCategory) {
+        return {
+          valid: false,
+          discount: 0,
+          message: "This coupon is not valid for the categories in your cart",
+        };
+      }
+    } else {
       return {
         valid: false,
         discount: 0,
-        message: "This coupon is not valid for the categories in your cart",
+        message: "This coupon is not valid for the items in your cart",
       };
     }
   }
@@ -295,13 +304,16 @@ export const validateCoupon = async (
       applicableTotal = applicableTotal - excludedTotal;
     }
 
-    discountAmount = (applicableTotal * coupon.discountValue) / 100;
+    discountAmount = (applicableTotal * (coupon.discountValue || 0)) / 100;
     if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
       discountAmount = coupon.maxDiscount;
     }
   } else if (coupon.discountType === "FREE_SHIPPING") {
     discountAmount = 0;
   }
+
+  // Final safety check for NaN
+  if (isNaN(discountAmount)) discountAmount = 0;
 
   // Build condition feedback
   const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);

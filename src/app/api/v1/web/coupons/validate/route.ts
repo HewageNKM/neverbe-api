@@ -9,12 +9,13 @@ export const POST = async (req: NextRequest) => {
     if (!dataString) {
       return NextResponse.json(
         { valid: false, message: "Missing data field" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const body = JSON.parse(dataString);
-    const { code, cartTotal, cartItems, userId } = body;
+    const data = JSON.parse(dataString);
+
+    const { code, cartTotal, cartItems, userId } = data || {};
 
     if (!code) {
       return NextResponse.json(

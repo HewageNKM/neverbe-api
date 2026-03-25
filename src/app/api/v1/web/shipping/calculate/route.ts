@@ -11,7 +11,8 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ cost: 0 });
     }
 
-    const { items } = JSON.parse(dataString);
+    const data = JSON.parse(dataString);
+    const { items } = data || {};
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ cost: 0 });

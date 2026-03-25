@@ -171,7 +171,10 @@ export class CouponRepository extends BaseRepository<Coupon> {
 
       if (target.variantMode === "ALL_VARIANTS") return true;
 
-      if (target.variantMode === "SPECIFIC_VARIANTS" && target.variantIds) {
+      if (
+        target.variantMode === "SPECIFIC_VARIANTS" &&
+        Array.isArray(target.variantIds)
+      ) {
         const hasMatch = matchingItems.some(
           (item) =>
             item.variantId && target.variantIds!.includes(item.variantId)
@@ -198,7 +201,10 @@ export class CouponRepository extends BaseRepository<Coupon> {
 
         if (target.variantMode === "ALL_VARIANTS") return true;
 
-        if (target.variantMode === "SPECIFIC_VARIANTS" && target.variantIds) {
+        if (
+          target.variantMode === "SPECIFIC_VARIANTS" &&
+          Array.isArray(target.variantIds)
+        ) {
           return item.variantId && target.variantIds.includes(item.variantId);
         }
       }
