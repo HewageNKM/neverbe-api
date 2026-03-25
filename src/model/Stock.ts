@@ -3,6 +3,8 @@ export interface Stock {
   name: string;
   address?: string;
   status: boolean; 
+  tags?: string[];
+  isDeleted?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
 }

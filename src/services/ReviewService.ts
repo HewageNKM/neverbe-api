@@ -9,7 +9,7 @@ export const getWebReviews = async (limit: number = 10, itemId?: string) => {
   return reviewRepository.getLatestWebReviews(limit, itemId);
 };
 
-export const createReview = async (uid: string, userName: string, data: any) => {
+export const createReview = async (uid: string, userName: string, data: Partial<Review>) => {
   return reviewRepository.createReview({
     ...data,
     userId: uid,

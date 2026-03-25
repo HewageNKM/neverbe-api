@@ -1,4 +1,4 @@
-import { Item } from "./Item";
+import { Item } from "../interfaces/Item";
 
 export interface PopularItem {
   item: Item;

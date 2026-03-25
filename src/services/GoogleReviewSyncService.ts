@@ -6,7 +6,7 @@ import { Review } from "../interfaces/Review";
  * Service to sync reviews from Google Business Profile (via Places API)
  */
 export class GoogleReviewSyncService {
-  private static GOOGLE_PLACES_API_URL = "https://maps.googleapis.com/maps/api/place/details/json";
+  private static GOOGLE_PLACES_API_URL = "https://places.googleapis.com/v1/places";
 
   /**
    * Sync reviews for a given Place ID
@@ -15,17 +15,17 @@ export class GoogleReviewSyncService {
    */
   async syncGoogleReviews(placeId: string, apiKey: string): Promise<number> {
     try {
-      const response = await axios.get(GoogleReviewSyncService.GOOGLE_PLACES_API_URL, {
-        params: {
-          place_id: placeId,
-          fields: "reviews",
-          key: apiKey,
+      const response = await axios.get(`${GoogleReviewSyncService.GOOGLE_PLACES_API_URL}/${placeId}`, {
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "reviews",
+          "Referer": process.env.WEB_BASE_URL || "https://neverbe.lk",
         },
       });
 
-      const { result } = response.data;
+      const result = response.data;
       if (!result || !result.reviews) {
-        console.warn("[Google Sync] No reviews found for placeId:", placeId);
+        console.warn("[Google Sync] No reviews found for placeId:", placeId, response.data);
         return 0;
       }
 
@@ -33,31 +33,30 @@ export class GoogleReviewSyncService {
       let syncCount = 0;
 
       for (const gr of googleReviews) {
-        // Map Google review to our internal Review interface
+        const externalId = gr.name || `google_${gr.publishTime}`;
+        
+        // Check if review already exists
+        const existing = await reviewRepository.getByExternalId(externalId);
+        if (existing) {
+          console.log("[Google Sync] Review already exists:", externalId);
+          continue;
+        }
+
         const reviewData: Partial<Review> = {
-          userName: gr.author_name,
+          userName: gr.authorAttribution?.displayName || "Google User",
           rating: gr.rating,
-          review: gr.text,
-          status: "APPROVED", // Auto-approve Google reviews as they are verified there
+          review: gr.text?.text || "",
+          status: "APPROVED",
           source: "GOOGLE",
-          externalId: `google_${gr.time}`,
-          createdAt: new Date(gr.time * 1000).toISOString(),
+          externalId: externalId,
+          createdAt: gr.publishTime || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           isDeleted: false,
         };
 
-        // Check if review already exists to avoid duplicates
-        // For simplicity, we can use externalId or author + time
-        // Here we'll just create it. In a real scenario, we'd check first.
-        
-        // Let's check via author and time if it exists
-        const existingReviews = await reviewRepository.getLatestWebReviews(100);
-        const exists = existingReviews.some(r => r.externalId === reviewData.externalId);
-
-        if (!exists) {
-          await reviewRepository.createReview(reviewData);
-          syncCount++;
-        }
+        await reviewRepository.createReview(reviewData);
+        syncCount++;
+        console.log("[Google Sync] Synced new review:", externalId);
       }
 
       return syncCount;

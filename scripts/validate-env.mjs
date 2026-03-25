@@ -38,6 +38,7 @@ const runtimeSecrets = [
   "PAYHERE_MERCHANT_SECRET",
   "PAYHERE_MERCHANT_ID",
   "GEMINI_API_KEY",
+  "GOOGLE_PLACES_API_KEY",
 ];
 
 const missingBuildVars = requiredBuildVars.filter((v) => !process.env[v]);

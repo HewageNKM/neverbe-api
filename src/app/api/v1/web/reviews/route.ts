@@ -1,6 +1,10 @@
 import { getWebReviews, createReview } from "@/services/ReviewService";
 import { verifyToken } from "@/services/WebAuthService";
+import { verifyCaptchaToken } from "@/services/CapchaService";
+import { uploadCompressedImage } from "@/services/StorageService";
+import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
+import { Review } from "@/interfaces/Review";
 
 export async function GET(req: Request) {
   try {
@@ -30,8 +34,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing data field" }, { status: 400 });
     }
 
-    const data = JSON.parse(dataString);
-    const result = await createReview(uid, userName, data);
+    const data = JSON.parse(dataString) as any;
+    
+    // Verify reCAPTCHA
+    if (!data.captchaToken) {
+      return NextResponse.json({ error: "Missing captcha token" }, { status: 400 });
+    }
+    const isHuman = await verifyCaptchaToken(data.captchaToken);
+    if (!isHuman) {
+      return NextResponse.json({ error: "Invalid captcha" }, { status: 403 });
+    }
+
+    // Handle Images
+    const imageFiles = formData.getAll("images") as File[];
+    const uploadedImages = [];
+    
+    if (imageFiles && imageFiles.length > 0) {
+      for (const file of imageFiles) {
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error("One or more images exceed 5MB limit");
+        }
+        
+        const fileId = nanoid(8).toLowerCase();
+        const filePath = `reviews/${uid}/${fileId}_img.webp`;
+        const url = await uploadCompressedImage(file, filePath);
+        uploadedImages.push({ url, file: filePath, order: uploadedImages.length });
+      }
+    }
+
+    const result = await createReview(uid, userName, {
+      ...data,
+      images: uploadedImages,
+    });
 
     return NextResponse.json(result);
   } catch (error: any) {

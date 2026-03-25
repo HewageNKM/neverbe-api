@@ -99,6 +99,27 @@ export class ReviewRepository extends BaseRepository<Review> {
     });
     return true;
   }
+
+  /**
+   * Get a review by its external ID (e.g. from Google)
+   */
+  async getByExternalId(externalId: string): Promise<Review | null> {
+    const snapshot = await this.collection
+      .where("externalId", "==", externalId)
+      .limit(1)
+      .get();
+    
+    if (snapshot.empty) return null;
+    
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    return {
+      ...data,
+      reviewId: doc.id,
+      createdAt: this.serializeTimestamp(data.createdAt),
+      updatedAt: this.serializeTimestamp(data.updatedAt),
+    } as Review;
+  }
 }
 
 // Singleton instance

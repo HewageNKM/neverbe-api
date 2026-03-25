@@ -2,6 +2,7 @@ import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { Timestamp } from "firebase-admin/firestore";
 import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
+import { OrderItem } from "@/model/OrderItem";
 import { searchStockInventory } from "./AlgoliaService";
 import dayjs from "dayjs";
 
@@ -11,7 +12,7 @@ export const getDailySaleReport = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders");
+    let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
       query = query.where("paymentStatus", "==", status);
@@ -218,7 +219,7 @@ export const getMonthlySummary = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders");
+    let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
       query = query.where("paymentStatus", "==", status);
@@ -430,7 +431,7 @@ export const getYearlySummary = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders");
+    let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
       query = query.where("paymentStatus", "==", status);
@@ -704,7 +705,7 @@ export const getTopSellingProducts = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders");
+    let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
       query = query.where("paymentStatus", "==", status);
@@ -797,7 +798,7 @@ export const getSalesByCategory = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders");
+    let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
       query = query.where("paymentStatus", "==", status);
@@ -1812,19 +1813,6 @@ export interface MonthlyRevenueReport {
   summary: Omit<MonthlyRevenue, "month">;
 }
 
-interface OrderItem {
-  bPrice: number;
-  quantity: number;
-}
-
-interface Order {
-  createdAt: Timestamp;
-  total: number;
-  discount: number;
-  transactionFeeCharge: number;
-  shippingFee: number;
-  items: OrderItem[];
-}
 
 export const getMonthlyRevenueReport = async (
   from: string,

@@ -19,7 +19,7 @@ export const getFinanceDashboardData =
   async (): Promise<FinanceDashboardData> => {
     try {
       const banks = await getBankAccounts();
-      const totalBankBalance = banks.reduce((acc, b) => acc + b.balance, 0);
+      const totalBankBalance = banks.reduce((acc, b) => acc + b.currentBalance, 0);
 
       const invoiceSummary = await getInvoiceAgingSummary();
 

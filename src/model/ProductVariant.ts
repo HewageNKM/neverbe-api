@@ -7,4 +7,5 @@ export interface ProductVariant {
     images: Img[],
     sizes: string[],
     status: boolean,
+    isDeleted?: boolean,
 }
