@@ -32,9 +32,17 @@ export const POST = async (req: Request) => {
     }
 
     const { path } = JSON.parse(rawData);
+    const bannerFile = formData.get("banner") as File;
 
-    const res = await uploadFile(formData.get("banner") as File, path);
-    const writeResult = await addABanner(res);
+    if (!bannerFile) {
+      return errorResponse("Banner image is required", 400);
+    }
+
+    const res = await uploadFile(bannerFile, path);
+    const writeResult = await addABanner({
+      ...res,
+      fileName: bannerFile.name,
+    });
     return NextResponse.json(writeResult);
   } catch (error: any) {
     console.error("[Banners API] Error:", error);

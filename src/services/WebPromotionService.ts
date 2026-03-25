@@ -335,8 +335,8 @@ export const validateCoupon = async (
       message: met
         ? `✓ Minimum order of Rs. ${coupon.minOrderAmount.toLocaleString()} met`
         : `Add Rs. ${(
-            coupon.minOrderAmount - cartTotal
-          ).toLocaleString()} more to use this coupon`,
+          coupon.minOrderAmount - cartTotal
+        ).toLocaleString()} more to use this coupon`,
     });
   }
 
@@ -349,9 +349,8 @@ export const validateCoupon = async (
       required: coupon.minQuantity,
       message: met
         ? `✓ Minimum ${coupon.minQuantity} items in cart`
-        : `Add ${coupon.minQuantity - totalQuantity} more item${
-            coupon.minQuantity - totalQuantity > 1 ? "s" : ""
-          } to use this coupon`,
+        : `Add ${coupon.minQuantity - totalQuantity} more item${coupon.minQuantity - totalQuantity > 1 ? "s" : ""
+        } to use this coupon`,
     });
   }
 
@@ -367,9 +366,8 @@ export const validateCoupon = async (
     conditionFeedback.push({
       type: "APPLICABLE_PRODUCTS",
       met: true,
-      message: `Applies to ${
-        coupon.applicableProducts.length
-      } specific product${coupon.applicableProducts.length > 1 ? "s" : ""}`,
+      message: `Applies to ${coupon.applicableProducts.length
+        } specific product${coupon.applicableProducts.length > 1 ? "s" : ""}`,
     });
   }
 

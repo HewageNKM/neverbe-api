@@ -68,6 +68,50 @@ export class PromotionRepository extends BaseRepository<Promotion> {
 
     return promo;
   }
+
+  /**
+   * Find all promotions
+   */
+  async findAll(): Promise<Promotion[]> {
+    const snapshot = await this.collection.where("isDeleted", "!=", true).get();
+    return snapshot.docs.map((doc) => this.serializePromotion(doc));
+  }
+
+  /**
+   * Create a new promotion
+   */
+  async create(data: Partial<Promotion>): Promise<Promotion> {
+    const docRef = await this.collection.add({
+      ...data,
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const doc = await docRef.get();
+    return this.serializePromotion(doc);
+  }
+
+  /**
+   * Update an existing promotion
+   */
+  async update(id: string, data: Partial<Promotion>): Promise<Promotion> {
+    await this.collection.doc(id).update({
+      ...data,
+      updatedAt: new Date(),
+    });
+    const doc = await this.collection.doc(id).get();
+    return this.serializePromotion(doc);
+  }
+
+  /**
+   * Delete a promotion (soft delete)
+   */
+  async delete(id: string): Promise<void> {
+    await this.collection.doc(id).update({
+      isDeleted: true,
+      updatedAt: new Date(),
+    });
+  }
 }
 
 // Singleton instance

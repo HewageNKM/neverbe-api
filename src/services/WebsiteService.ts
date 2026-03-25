@@ -1,4 +1,4 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { adminFirestore, adminStorageBucket } from "@/firebase/firebaseAdmin";
 
 // ============ NAVIGATION LOGIC ============
 
@@ -38,59 +38,14 @@ export const saveNavigationConfig = async (config: NavigationConfig) => {
   }
 };
 
-// ============ PROMOTIONS (BANNERS) LOGIC ============
-
-export interface WebsitePromotion {
-  id?: string;
-  file: string;
-  url: string;
-  title: string;
-  link: string;
-  createdAt?: any;
-}
-
-export const getAllPromotions = async () => {
-  try {
-    const snapshot = await adminFirestore
-      .collection("website_promotions")
-      .get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  } catch (e) {
-    console.error("Error getting promotions:", e);
-    throw e;
-  }
-};
-
-export const addPromotion = async (data: WebsitePromotion) => {
-  try {
-    const docRef = await adminFirestore.collection("website_promotions").add({
-      ...data,
-      createdAt: new Date(),
-    });
-    return { id: docRef.id, ...data, createdAt: new Date() };
-  } catch (e) {
-    console.error("Error adding promotion:", e);
-    throw e;
-  }
-};
-
-export const deletePromotion = async (id: string) => {
-  try {
-    await adminFirestore.collection("website_promotions").doc(id).delete();
-    return { id };
-  } catch (e) {
-    console.error("Error deleting promotion:", e);
-    throw e;
-  }
-};
-// ... existing exports
+// ============ NAVIGATION LOGIC ============
 
 // ============ BANNERS LOGIC ============
 
 export const getAllBanners = async () => {
   try {
     const snapshot = await adminFirestore
-      .collection("website_banners")
+      .collection("sliders")
       .orderBy("createdAt", "desc")
       .get();
     return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -102,7 +57,7 @@ export const getAllBanners = async () => {
 
 export const addABanner = async (data: any) => {
   try {
-    const docRef = await adminFirestore.collection("website_banners").add({
+    const docRef = await adminFirestore.collection("sliders").add({
       ...data,
       createdAt: new Date(),
     });
@@ -114,7 +69,23 @@ export const addABanner = async (data: any) => {
 };
 export const deleteBanner = async (id: string) => {
   try {
-    await adminFirestore.collection("website_banners").doc(id).delete();
+    const doc = await adminFirestore.collection("sliders").doc(id).get();
+    if (doc.exists) {
+      const data = doc.data();
+      if (data?.url) {
+        try {
+          // Extract path from storage URL: https://storage.googleapis.com/BUCKET_NAME/PATH
+          const urlParts = data.url.split("/");
+          const path = urlParts.slice(4).join("/"); // Everything after bucket name
+          if (path) {
+            await adminStorageBucket.file(path).delete().catch(err => console.error("Storage delete err:", err));
+          }
+        } catch (storageErr) {
+          console.error("Error extracting/deleting storage file:", storageErr);
+        }
+      }
+    }
+    await adminFirestore.collection("sliders").doc(id).delete();
     return { id };
   } catch (e) {
     console.error("Error deleting banner:", e);
