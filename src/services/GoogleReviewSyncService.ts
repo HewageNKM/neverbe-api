@@ -38,7 +38,14 @@ export class GoogleReviewSyncService {
         // Check if review already exists
         const existing = await reviewRepository.getByExternalId(externalId);
         if (existing) {
-          console.log("[Google Sync] Review already exists:", externalId);
+          // If it exists but is pending, approve it (since it's from Google)
+          if (existing.status === "PENDING") {
+            console.log("[Google Sync] Approving existing pending Google review:", externalId);
+            await reviewRepository.updateReview(existing.reviewId!, { status: "APPROVED" });
+            syncCount++;
+          } else {
+            console.log("[Google Sync] Google Review already exists and is approved:", externalId);
+          }
           continue;
         }
 

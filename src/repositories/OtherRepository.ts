@@ -222,6 +222,33 @@ export class OtherRepository extends BaseRepository<any> {
     await docRef.set(dataToSave, { merge: true });
     return { success: true, message: "Address saved." };
   }
+
+  /**
+   * Get sync metadata for a specific key
+   */
+  async getSyncMetadata(key: string): Promise<any | null> {
+    const doc = await this.collection.firestore
+      .collection("sync_metadata")
+      .doc(key)
+      .get();
+    return doc.exists ? doc.data() : null;
+  }
+
+  /**
+   * Update sync metadata for a specific key
+   */
+  async updateSyncMetadata(key: string, data: any): Promise<void> {
+    await this.collection.firestore
+      .collection("sync_metadata")
+      .doc(key)
+      .set(
+        {
+          ...data,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+  }
 }
 
 // Singleton instance

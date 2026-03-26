@@ -14,13 +14,21 @@ export class ReviewRepository extends BaseRepository<Review> {
    * @param limit Maximum number of reviews to fetch
    * @param itemId Optional product ID to filter by
    */
-  async getLatestWebReviews(limit: number = 20, itemId?: string): Promise<Review[]> {
+  async getLatestWebReviews(
+    limit: number = 20,
+    itemId?: string,
+    source?: string,
+  ): Promise<Review[]> {
     let query = this.collection
       .where("status", "==", "APPROVED") // Only show verified/approved reviews
       .where("isDeleted", "==", false);
 
     if (itemId) {
       query = query.where("itemId", "==", itemId);
+    }
+
+    if (source) {
+      query = query.where("source", "==", source);
     }
 
     const snapshot = await query
@@ -45,10 +53,10 @@ export class ReviewRepository extends BaseRepository<Review> {
   async createReview(data: Partial<Review>): Promise<Review> {
     const docRef = this.collection.doc();
     const reviewData = {
+      status: "PENDING", // Default status
       ...data,
       reviewId: docRef.id,
-      status: "PENDING", // New reviews are pending by default
-      createdAt: new Date().toISOString(),
+      createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     await docRef.set(reviewData);

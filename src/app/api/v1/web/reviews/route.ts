@@ -1,4 +1,4 @@
-import { getWebReviews, createReview } from "@/services/ReviewService";
+import { getWebReviews, createReview, triggerBackgroundSync } from "@/services/ReviewService";
 import { verifyToken } from "@/services/WebAuthService";
 import { verifyCaptchaToken } from "@/services/CapchaService";
 import { uploadCompressedImage } from "@/services/StorageService";
@@ -11,9 +11,16 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "10");
     const itemId = searchParams.get("itemId") || undefined;
+    const source = searchParams.get("source") || undefined;
 
-    const reviews = await getWebReviews(limit, itemId);
+    const reviews = await getWebReviews(limit, itemId, source);
     
+    // Trigger background sync if source is GOOGLE or not specified
+    if (!source || source === "GOOGLE") {
+      // Trigger background sync (don't await to avoid blocking response)
+      triggerBackgroundSync().catch(err => console.error("Background sync trigger failed:", err));
+    }
+
     return NextResponse.json(reviews);
   } catch (error: any) {
     console.error("Error fetching reviews:", error);
