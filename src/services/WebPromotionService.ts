@@ -101,7 +101,7 @@ export const validateCoupon = async (
   if (startDate && now.isBefore(startDate)) {
     return { valid: false, discount: 0, message: "Coupon has not started yet" };
   }
-  if (endDate && now.isAfter(endDate)) {
+  if (endDate && now.isAfter(endDate.endOf("day"))) {
     return { valid: false, discount: 0, message: "Coupon has expired" };
   }
 

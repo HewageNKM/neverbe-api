@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const decodedToken = await verifyPosAuth("manage_pos_cart");
-    
+
     // Standardized FormData + JSON data parsing
     const formData = await request.formData();
     const dataString = formData.get("data") as string;
-    
+
     if (!dataString) {
       return errorResponse("No data provided", 400);
     }

@@ -228,10 +228,10 @@ export const getCouponByCode = async (code: string): Promise<Coupon | null> => {
   return {
     id: doc.id,
     ...rest,
-    startDate: toSafeLocaleString(data.startDate) || "",
-    endDate: toSafeLocaleString(data.endDate) || "",
-    createdAt: toSafeLocaleString(data.createdAt) || "",
-    updatedAt: toSafeLocaleString(data.updatedAt) || "",
+    startDate: data.startDate instanceof Timestamp ? data.startDate.toDate().toISOString() : data.startDate,
+    endDate: data.endDate instanceof Timestamp ? data.endDate.toDate().toISOString() : data.endDate,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
   } as Coupon;
 };
 
@@ -259,10 +259,10 @@ export const getCoupons = async (
     const dataList = hits.map((hit: any) => ({
       ...hit,
       id: hit.objectID || hit.id,
-      startDate: toSafeLocaleString(hit.startDate) || "",
-      endDate: toSafeLocaleString(hit.endDate) || "",
-      createdAt: toSafeLocaleString(hit.createdAt) || "",
-      updatedAt: toSafeLocaleString(hit.updatedAt) || "",
+      startDate: hit.startDate && typeof (hit.startDate as any).toDate === 'function' ? (hit.startDate as any).toDate().toISOString() : hit.startDate,
+      endDate: hit.endDate && typeof (hit.endDate as any).toDate === 'function' ? (hit.endDate as any).toDate().toISOString() : hit.endDate,
+      createdAt: hit.createdAt && typeof (hit.createdAt as any).toDate === 'function' ? (hit.createdAt as any).toDate().toISOString() : hit.createdAt,
+      updatedAt: hit.updatedAt && typeof (hit.updatedAt as any).toDate === 'function' ? (hit.updatedAt as any).toDate().toISOString() : hit.updatedAt,
     })) as Coupon[];
 
     return { dataList, rowCount: nbHits };
