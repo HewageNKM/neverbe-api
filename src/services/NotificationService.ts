@@ -195,6 +195,66 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
   }
 };
 
+/**
+ * Check if a phone number has a verified OTP within the last 15 minutes.
+ * This ensures that a COD order can only be placed after a successful OTP verification.
+ */
+export const isOTPVerifiedRecently = async (phone: string): Promise<boolean> => {
+  try {
+    const verifiedWindowMinutes = 15;
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - verifiedWindowMinutes * 60000);
+
+    const snapshot = await adminFirestore
+      .collection(OTP_COLLECTION)
+      .where("phone", "==", phone)
+      .where("verified", "==", true)
+      .where("verifiedAt", ">=", cutoffDate)
+      .orderBy("verifiedAt", "desc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      console.warn(`[OTP Service] No recently verified OTP found for ${phone}`);
+      return false;
+    }
+
+    const data = snapshot.docs[0].data();
+    if (data.consumed) {
+      console.warn(`[OTP Service] Verified OTP already consumed for ${phone}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[OTP Service] Error checking recently verified OTP:`, error);
+    return false;
+  }
+};
+
+/**
+ * Mark the latest verified OTP for a phone number as consumed to prevent replay attacks.
+ */
+export const consumeOTPVerification = async (phone: string): Promise<void> => {
+  try {
+    const snapshot = await adminFirestore
+      .collection(OTP_COLLECTION)
+      .where("phone", "==", phone)
+      .where("verified", "==", true)
+      .orderBy("verifiedAt", "desc")
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      await doc.ref.update({ consumed: true, consumedAt: new Date() });
+      console.log(`[OTP Service] OTP verified state consumed for ${phone}`);
+    }
+  } catch (error) {
+    console.error(`[OTP Service] Error consuming OTP verification:`, error);
+  }
+};
+
 /** Send Predefined Order Confirmation SMS (Prevents duplicates using hash) */
 export const sendOrderConfirmedSMS = async (orderId: string) => {
   try {

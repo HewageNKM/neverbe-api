@@ -4,6 +4,8 @@ import { orderRepository } from "@/repositories/OrderRepository";
 import {
   sendOrderConfirmedEmail,
   sendOrderConfirmedSMS,
+  isOTPVerifiedRecently,
+  consumeOTPVerification,
 } from "./NotificationService";
 import { updateOrAddOrderHash } from "./IntegrityService";
 import { Order } from "@/model/Order";
@@ -60,6 +62,20 @@ export const updatePayment = async (
 export const addWebOrder = async (order: Partial<Order>) => {
   if (!order.orderId) throw new AppError("Order ID is required", 400);
   if (!order.items?.length) throw new AppError("Order items are required", 400);
+
+  // --- OTP Verification check for COD ---
+  const isCOD = order.paymentMethodId === "PM-001";
+  const userPhone = order.customer?.phone;
+
+  if (isCOD) {
+    if (!userPhone) {
+      throw new AppError("Phone number is required for Cash on Delivery orders", 400);
+    }
+    const isVerified = await isOTPVerifiedRecently(userPhone);
+    if (!isVerified) {
+      throw new AppError("Please verify your phone number via OTP to place a Cash on Delivery order.", 400);
+    }
+  }
 
   const orderRef = adminFirestore.collection("orders").doc(order.orderId);
   const now = admin.firestore.Timestamp.now();
@@ -376,6 +392,12 @@ export const addWebOrder = async (order: Partial<Order>) => {
             finalDiscount,
           );
         }
+
+        // --- Consume OTP verification for COD ---
+        if (isCOD && userPhone) {
+          await consumeOTPVerification(userPhone);
+        }
+        
         success = true;
       } catch (err) {
         if (attempt === 3) throw err;
