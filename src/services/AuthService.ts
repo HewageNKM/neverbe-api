@@ -3,22 +3,21 @@ import { headers } from "next/headers";
 import { User } from "@/model/User";
 import { AppError, errorResponse } from "@/utils/apiResponse";
 
-export const authorizeOrderRequest = async (req: Request) => {
+export const getAuthUid = async (req: Request): Promise<string | null> => {
   try {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ")
       ? authHeader.split(" ")[1]
       : null;
 
-    if (token != "undefined" && token) {
-      await adminAuth.verifyIdToken(token);
-      return true;
-    } else {
-      return false;
+    if (token && token !== "undefined") {
+      const decodedToken = await adminAuth.verifyIdToken(token);
+      return decodedToken.uid;
     }
+    return null;
   } catch (error) {
-    console.log(error);
-    throw new AppError("Authorization Failed", 401);
+    console.error("Auth Token Verification Failed:", error);
+    return null;
   }
 };
 

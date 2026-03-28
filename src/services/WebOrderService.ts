@@ -413,3 +413,10 @@ export const addWebOrder = async (order: Partial<Order>) => {
     throw error;
   }
 };
+
+/**
+ * Get all orders for a specific user ID
+ */
+export const getOrdersByUserId = async (userId: string, limit: number = 20) => {
+  return await orderRepository.findByUserId(userId, limit);
+};
