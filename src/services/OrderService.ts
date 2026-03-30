@@ -16,21 +16,21 @@ const ORDERS_COLLECTION = "orders";
 export const getOrders = async (
   page: number = 1,
   size: number = 20,
-  from?: string,
-  to?: string,
+  startDateStr?: string,
+  endDateStr?: string,
   status?: string,
   payment?: string,
   orderId?: string,
-  source?: string,
+  from?: string,
   stockId?: string,
   paymentMethod?: string,
 ) => {
   try {
     const filters: string[] = [];
 
-    if (from && to) {
-      const startDate = new Date(from);
-      const endDate = new Date(to);
+    if (startDateStr && endDateStr) {
+      const startDate = new Date(startDateStr);
+      const endDate = new Date(endDateStr);
       endDate.setHours(23, 59, 59, 999);
 
       const start = startDate.getTime();
@@ -41,7 +41,7 @@ export const getOrders = async (
     if (status) filters.push(`status:"${status}"`);
     if (orderId) filters.push(`orderId:"${orderId}"`);
     if (payment) filters.push(`paymentStatus:"${payment}"`);
-    if (source) filters.push(`from:"${source}"`);
+    if (from) filters.push(`from:"${from}"`);
     if (stockId) filters.push(`stockId:"${stockId}"`);
     if (paymentMethod) filters.push(`paymentMethod:"${paymentMethod}"`);
     const { hits, nbHits } = await searchOrders(orderId || "", {

@@ -431,9 +431,24 @@ export const createPOSOrder = async (order: Partial<Order>, userId: string) => {
   const orderRef = adminFirestore.collection("orders").doc(order.orderId);
   const now = admin.firestore.Timestamp.now();
 
+  // Fetch store name if not provided
+  let storeName = order.storeName;
+  if (!storeName && order.stockId) {
+    const stockDoc = await adminFirestore
+      .collection("stocks")
+      .doc(order.stockId)
+      .get();
+    if (stockDoc.exists) {
+      storeName =
+        stockDoc.data()?.name || stockDoc.data()?.label || order.stockId;
+    }
+  }
+
   const orderData: Order = {
     ...order,
-    from: "Store", // Ensure from is Store
+    from: "Store",
+    sourceName: "POS",
+    storeName: storeName || "Physical Store",
     userId: userId || order.userId || null,
     createdAt: now,
     updatedAt: now,

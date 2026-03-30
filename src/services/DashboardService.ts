@@ -865,16 +865,16 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary> => {
       .collection("expenses")
       .where("type", "==", "expense")
       .where("status", "==", "APPROVED")
-      .where("createdAt", ">=", Timestamp.fromDate(startOfDay))
-      .where("createdAt", "<=", Timestamp.fromDate(endOfDay));
+      .where("date", ">=", Timestamp.fromDate(startOfDay))
+      .where("date", "<=", Timestamp.fromDate(endOfDay));
 
     // Fetch month's expenses
     const monthQuery = adminFirestore
       .collection("expenses")
       .where("type", "==", "expense")
       .where("status", "==", "APPROVED")
-      .where("createdAt", ">=", Timestamp.fromDate(startOfMonth))
-      .where("createdAt", "<=", Timestamp.fromDate(endOfMonth));
+      .where("date", ">=", Timestamp.fromDate(startOfMonth))
+      .where("date", "<=", Timestamp.fromDate(endOfMonth));
 
     const [todaySnapshot, monthSnapshot] = await Promise.all([
       todayQuery.get(),

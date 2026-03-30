@@ -29,14 +29,20 @@ export const getFinanceDashboardData =
       startOfMonth.setHours(0, 0, 0, 0);
 
       const pettyCashSnapshot = await adminFirestore
-        .collection("petty_cash")
+        .collection("expenses")
         .where("status", "==", "APPROVED")
-        .where("createdAt", ">=", startOfMonth)
+        .where("date", ">=", startOfMonth)
         .get();
 
       const paymentRecordsSnapshot = await adminFirestore
         .collection("payment_records")
         .where("date", ">=", startOfMonth)
+        .get();
+
+      const ordersSnapshot = await adminFirestore
+        .collection("orders")
+        .where("createdAt", ">=", startOfMonth)
+        .where("paymentStatus", "in", ["Paid", "PAID"])
         .get();
 
       let monthlyExpenses = 0;
@@ -45,12 +51,25 @@ export const getFinanceDashboardData =
       const cashFlowMap: Record<string, { income: number; expense: number }> =
         {};
 
-      // Process Petty Cash
+      // Process Orders (Income)
+      ordersSnapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        const amount = Number(data.total) || 0;
+        const date = new Date(
+          (data.createdAt as any).toDate()
+        ).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+        if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
+        monthlyIncome += amount;
+        cashFlowMap[date].income += amount;
+      });
+
+      // Process Petty Cash / Expenses
       pettyCashSnapshot.docs.forEach((doc) => {
         const data = doc.data();
         const amount = Number(data.amount) || 0;
         const date = new Date(
-          (data.createdAt as any).toDate()
+          (data.date as any).toDate()
         ).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
         if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
@@ -108,7 +127,8 @@ export const getFinanceDashboardData =
       // Recent Transactions (Mix of Petty Cash and Invoice Payments?)
       // Fetch separate recent queries
       const recentPetty = await adminFirestore
-        .collection("petty_cash")
+        .collection("expenses")
+        .orderBy("date", "desc")
         .limit(5)
         .get();
 
@@ -121,8 +141,8 @@ export const getFinanceDashboardData =
         ...recentPetty.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-          dateObj: (doc.data().createdAt as any).toDate(),
-          date: (doc.data().createdAt as any).toDate().toLocaleDateString(),
+          dateObj: (doc.data().date as any).toDate(),
+          date: (doc.data().date as any).toDate().toLocaleDateString(),
           category: doc.data().category,
           amount: Number(doc.data().amount),
           type: doc.data().type,

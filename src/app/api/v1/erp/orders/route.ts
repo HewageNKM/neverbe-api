@@ -15,12 +15,12 @@ export const GET = async (req: NextRequest) => {
     const url = new URL(req.url);
     const pageNumber = parseInt(url.searchParams.get("page") as string) || 1;
     const size = parseInt(url.searchParams.get("size") as string) || 20;
-    const fromData = url.searchParams.get("from");
-    const toData = url.searchParams.get("to");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
     const status = url.searchParams.get("status");
     const payment = url.searchParams.get("payment");
     const orderId = url.searchParams.get("search");
-    const source = url.searchParams.get("source");
+    const from = url.searchParams.get("from");
     const stockId = url.searchParams.get("stockId");
     const paymentMethod = url.searchParams.get("paymentMethod");
 
@@ -28,12 +28,12 @@ export const GET = async (req: NextRequest) => {
     const { dataList, total } = await getOrders(
       pageNumber,
       size,
-      fromData || undefined,
-      toData || undefined,
+      startDate || undefined,
+      endDate || undefined,
       status || undefined,
       payment || undefined,
       orderId || undefined,
-      source || undefined,
+      from || undefined,
       stockId || undefined,
       paymentMethod || undefined,
     );

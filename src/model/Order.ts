@@ -20,6 +20,8 @@ export interface Order {
   customer?: Customer;
   discount: number;
   from: string;
+  sourceName?: string;
+  storeName?: string;
   stockId?: string;
   integrity: boolean;
   paymentReceived?: Payment[];

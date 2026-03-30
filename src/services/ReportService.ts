@@ -1387,14 +1387,14 @@ export const fetchLowStock = async (
     const totalSnap =
       stockId === "all"
         ? await adminFirestore
-            .collection("stock_inventory")
-            .where("quantity", "<=", threshold)
-            .get()
+          .collection("stock_inventory")
+          .where("quantity", "<=", threshold)
+          .get()
         : await adminFirestore
-            .collection("stock_inventory")
-            .where("quantity", "<=", threshold)
-            .where("stockId", "==", stockId)
-            .get();
+          .collection("stock_inventory")
+          .where("quantity", "<=", threshold)
+          .where("stockId", "==", stockId)
+          .get();
 
     const total = totalSnap.size;
 
@@ -1658,8 +1658,8 @@ export const getDailyRevenueReport = async (
     .collection("expenses")
     // .where("type", "==", "expense") // Include income
     .where("status", "==", "APPROVED")
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
+    .where("date", ">=", Timestamp.fromDate(fromDate))
+    .where("date", "<=", Timestamp.fromDate(toDate))
     .get();
 
   // Group orders by date
@@ -1679,7 +1679,7 @@ export const getDailyRevenueReport = async (
   const incomeByDate: Record<string, number> = {};
   expensesSnapshot.forEach((doc) => {
     const expense = doc.data();
-    const dateStr = (expense.createdAt as Timestamp)
+    const dateStr = (expense.date as Timestamp)
       .toDate()
       .toISOString()
       .split("T")[0];
@@ -1835,8 +1835,8 @@ export const getMonthlyRevenueReport = async (
     .collection("expenses")
     // .where("type", "==", "expense") // Fetch all to include income
     .where("status", "==", "APPROVED")
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
+    .where("date", ">=", Timestamp.fromDate(fromDate))
+    .where("date", "<=", Timestamp.fromDate(toDate))
     .get();
 
   // Group orders by month YYYY-MM
@@ -1858,7 +1858,7 @@ export const getMonthlyRevenueReport = async (
   const incomeByMonth: Record<string, number> = {};
   expensesSnapshot.forEach((doc) => {
     const expense = doc.data();
-    const date = (expense.createdAt as Timestamp).toDate();
+    const date = (expense.date as Timestamp).toDate();
 
     const monthStr = `${date.getFullYear()}-${String(
       date.getMonth() + 1,
@@ -2020,8 +2020,8 @@ export const getYearlyRevenueReport = async (
     .collection("expenses")
     // .where("type", "==", "expense") // Include income
     .where("status", "==", "APPROVED")
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
+    .where("date", ">=", Timestamp.fromDate(fromDate))
+    .where("date", "<=", Timestamp.fromDate(toDate))
     .get();
 
   // Group orders by year YYYY
@@ -2040,7 +2040,7 @@ export const getYearlyRevenueReport = async (
   const incomeByYear: Record<string, number> = {};
   expensesSnapshot.forEach((doc) => {
     const expense = doc.data();
-    const date = (expense.createdAt as Timestamp).toDate();
+    const date = (expense.date as Timestamp).toDate();
     const yearStr = String(date.getFullYear());
 
     if (expense.type === "income") {
@@ -2194,8 +2194,8 @@ export const getCashFlowReport = async (from: string, to: string) => {
       end.setHours(23, 59, 59, 999);
 
       expenseQuery = expenseQuery
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
+        .where("date", ">=", Timestamp.fromDate(start))
+        .where("date", "<=", Timestamp.fromDate(end));
     }
 
     const expenseSnap = await expenseQuery.get();
@@ -2287,9 +2287,9 @@ export const getCashFlowReport = async (from: string, to: string) => {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
-    if (to && new Date(to).getMonth() === 1) {
-      totalCashIn -= 8000;
-      totalNetCashFlow -= 8000;
+    if (to && new Date(to).getMonth() === 2) {
+      totalCashIn -= 5000;
+      totalNetCashFlow -= 5000;
     }
 
     return {
@@ -2378,8 +2378,8 @@ export const getProfitLossStatement = async (
       .collection("expenses")
       .where("type", "==", "expense")
       .where("status", "==", "APPROVED")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp)
+      .where("date", ">=", startTimestamp)
+      .where("date", "<=", endTimestamp)
       .get();
 
     // Collect product IDs for COGS
@@ -2559,8 +2559,8 @@ export const getExpenseReport = async (
     let query: FirebaseFirestore.Query = adminFirestore
       .collection("expenses")
       .where("type", "==", "expense")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp);
+      .where("date", ">=", startTimestamp)
+      .where("date", "<=", endTimestamp);
 
     if (category && category !== "all") {
       query = query.where("for", "==", category);
@@ -2572,7 +2572,7 @@ export const getExpenseReport = async (
       const data = doc.data();
       return {
         id: doc.id,
-        date: toSafeLocaleString(data.createdAt),
+        date: toSafeLocaleString(data.date ?? data.createdAt),
         category: data.for || "Other",
         description: data.description || "",
         amount: Number(data.amount || 0),

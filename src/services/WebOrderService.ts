@@ -88,7 +88,9 @@ export const addWebOrder = async (order: Partial<Order>) => {
 
   const orderData: Order = {
     ...order,
-    from: order.from || "Website",
+    from: "Website",
+    sourceName: order.sourceName || "Website",
+    storeName: order.storeName || "Online Store",
     userId: order.userId || null,
     createdAt: now,
 
