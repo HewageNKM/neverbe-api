@@ -8,10 +8,7 @@ export const GET = async (req: NextRequest) => {
 
     const intelligence = await getHybridIntelligence();
 
-    return NextResponse.json({
-      success: true,
-      data: intelligence
-    });
+    return NextResponse.json(intelligence);
   } catch (error: any) {
     console.error("[API/HybridIntelligence] Error:", error);
     return NextResponse.json(
