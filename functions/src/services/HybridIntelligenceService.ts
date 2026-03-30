@@ -107,32 +107,65 @@ export const updateHybridIntelligence = async () => {
 
     console.log(`[HybridIntelligenceJob] Completed in ${Date.now() - startTime}ms`);
 
-    // 3. Automated Low Stock Notifications
+    // 3. Automated Low Stock Notifications (with Anti-Spam Cooldown)
     if (lowStock.length > 0) {
       try {
-        const docId = `STOCK_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        const notification = {
-          type: "STOCK",
-          title: "Low Stock Alert",
-          message: `${lowStock.length} items are currently below the critical threshold. Review inventory immediately.`,
-          metadata: { itemCount: lowStock.length },
-          read: false,
-          createdAt: new Date()
-        };
-        await admin.firestore().collection("erp_notifications").doc(docId).set(notification);
+        const cacheDoc = await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
+        const cacheData = cacheDoc.data();
+        
+        const lastCount = cacheData?.lastLowStockAlertCount || 0;
+        const lastTime = cacheData?.lastLowStockAlertTime?.toDate() || new Date(0);
+        const hoursSinceLast = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
 
-        // Send Push
-        const { getMessaging } = await import("firebase-admin/messaging");
-        await getMessaging().send({
-          topic: "admin_alerts",
-          notification: {
-            title: notification.title,
-            body: notification.message
-          },
-          webpush: { fcmOptions: { link: "/inventory" } }
-        });
+        // Only send if count changed OR 12 hours have passed
+        if (lowStock.length !== lastCount || hoursSinceLast >= 12) {
+          const itemNames = lowStock.slice(0, 3).map(i => i.name).join(", ");
+          const moreSuffix = lowStock.length > 3 ? ` and ${lowStock.length - 3} others` : "";
+          
+          const docId = `STOCK_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          const notification = {
+            type: "STOCK",
+            title: "Inventory Alert: Low Stock",
+            message: `The following items are running low: ${itemNames}${moreSuffix}. Check your stock levels immediately.`,
+            metadata: { 
+              itemCount: lowStock.length,
+              itemNames: lowStock.map(i => i.name)
+            },
+            read: false,
+            createdAt: new Date()
+          };
+          
+          await admin.firestore().collection("erp_notifications").doc(docId).set(notification);
+
+          // Update Cache with last alert info
+          await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({
+            lastLowStockAlertCount: lowStock.length,
+            lastLowStockAlertTime: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // Send Push
+          const messaging = admin.messaging();
+          await messaging.send({
+            topic: "admin_alerts",
+            notification: {
+              title: notification.title,
+              body: notification.message
+            },
+            data: {
+              type: "STOCK",
+              click_action: "FLUTTER_NOTIFICATION_CLICK"
+            },
+            webpush: {
+              fcmOptions: { link: "/inventory" }
+            }
+          });
+          
+          console.log(`[HybridIntelligenceJob] Sent low stock alert for ${lowStock.length} items.`);
+        } else {
+          console.log(`[HybridIntelligenceJob] Skipping low stock alert (Cooldown active, Count unchanged: ${lowStock.length}).`);
+        }
       } catch (notifyErr) {
-        console.error("[HybridIntelligenceJob] Failed to send low stock notification", notifyErr);
+        console.error("[HybridIntelligenceJob] Failed to handle low stock notification", notifyErr);
       }
     }
 

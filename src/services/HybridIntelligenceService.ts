@@ -7,7 +7,7 @@ export const getHybridIntelligence = async () => {
     if (cachedData) {
       return {
         success: true,
-        data: cachedData.data
+        data: cachedData // cachedData is already the data object from Firestore
       };
     }
 
