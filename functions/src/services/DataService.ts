@@ -233,3 +233,47 @@ export const getFinanceSnapshot = async () => {
     dailyExpenseVelocity
   };
 };
+
+export const getNeuralPromotionStrategy = async () => {
+  const inventorySnap = await admin.firestore().collection("stock_inventory").get();
+  const productIds = inventorySnap.docs.map(d => d.data().productId);
+  const productsSnap = await Promise.all(productIds.map(id => admin.firestore().collection("products").doc(id).get()));
+  const productInfo = new Map(productsSnap.map(d => [d.id, d.data()]));
+
+  // Calculate 30-day velocity
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const ordersSnap = await admin.firestore().collection("orders").where("paymentStatus", "==", "Paid").where("createdAt", ">=", Timestamp.fromDate(thirtyDaysAgo)).get();
+
+  const velocityMap: Record<string, number> = {};
+  ordersSnap.docs.forEach(doc => {
+    const order = doc.data();
+    if (order.items) {
+      order.items.forEach((item: any) => {
+        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 30);
+      });
+    }
+  });
+
+  const suggestions: any[] = [];
+  inventorySnap.docs.forEach(doc => {
+    const data = doc.data();
+    const velocity = velocityMap[data.productId] || 0;
+    const currentStock = data.quantity || 0;
+    
+    // Suggest promotion if stock > 30 and velocity is extremely low (<0.1 units/day)
+    if (currentStock > 30 && velocity < 0.1) {
+      const pData = productInfo.get(data.productId);
+      suggestions.push({
+        productId: data.productId,
+        name: pData?.name || "Unknown",
+        currentStock,
+        dailyVelocity: velocity.toFixed(3),
+        daysToClear: velocity > 0 ? Math.floor(currentStock / velocity) : 999,
+        recommendedDiscount: velocity === 0 ? 25 : 15
+      });
+    }
+  });
+
+  return suggestions.sort((a, b) => b.currentStock - a.currentStock).slice(0, 10);
+};
