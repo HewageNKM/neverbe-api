@@ -49,7 +49,7 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
     admin.firestore().collection(COLLECTION_INVENTORY).get(),
     admin.firestore().collection("bank_accounts").get(),
     admin.firestore().collection("supplier_invoices").where("status", "!=", "Paid").get(),
-    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
+    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("status", "==", "APPROVED").where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
   ]);
 
   const productIds = Array.from(new Set(inventorySnap.docs.map(d => d.data().productId)));
