@@ -1,10 +1,10 @@
 import * as admin from "firebase-admin";
 import { getGenAI } from "./AIService";
 import { generateSalesForecast } from "./TFService";
-import { 
-  getDailySnapshot, 
-  getMonthlyComparison, 
-  getLowStockRisks, 
+import {
+  getDailySnapshot,
+  getMonthlyComparison,
+  getLowStockRisks,
   getPopularItems,
   getHistoricalSales
 } from "./DataService";
@@ -37,13 +37,13 @@ export const updateHybridIntelligence = async () => {
         .collection(CACHE_COLLECTION)
         .doc(CACHE_KEY)
         .get();
-      
+
       if (prevDoc.exists) {
         const prevData = prevDoc.data();
         if (prevData && prevData.updatedAt) {
           const updatedAt = prevData.updatedAt.toDate();
           const now = new Date();
-          
+
           // If the advisory was generated in the last 24 hours, reuse it
           if (now.getTime() - updatedAt.getTime() < 24 * 60 * 60 * 1000) {
             strategicAdvisory = prevData.data.advisory;
@@ -120,7 +120,7 @@ export const updateHybridIntelligence = async () => {
           createdAt: new Date()
         };
         await admin.firestore().collection("erp_notifications").doc(docId).set(notification);
-        
+
         // Send Push
         const { getMessaging } = await import("firebase-admin/messaging");
         await getMessaging().send({
