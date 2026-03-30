@@ -475,3 +475,79 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
     return false;
   }
 };
+
+/**
+ * --- ERP INTERNAL NOTIFICATIONS ---
+ */
+
+export type AdminNotificationType = "ORDER" | "STOCK" | "SYSTEM" | "AI";
+
+/**
+ * Create a new notification for ERP administrators
+ */
+export const createAdminNotification = async (
+  type: AdminNotificationType,
+  title: string,
+  message: string,
+  metadata: Record<string, any> = {}
+) => {
+  try {
+    const notification = {
+      type,
+      title,
+      message,
+      metadata,
+      read: false,
+      createdAt: new Date(),
+    };
+
+    const docId = `${type}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    await adminFirestore.collection("erp_notifications").doc(docId).set(notification);
+    
+    // Send Native Push Notification via FCM Topic
+    const payload = {
+      topic: "admin_alerts",
+      notification: {
+        title: title,
+        body: message,
+      },
+      data: {
+        type,
+        click_action: "FLUTTER_NOTIFICATION_CLICK", // Standard for some handlers, but we use web handlers
+        ...Object.keys(metadata).reduce((acc: any, key) => {
+          acc[key] = String(metadata[key]);
+          return acc;
+        }, {})
+      },
+      webpush: {
+        fcmOptions: {
+          link: metadata.orderId ? `/orders/${metadata.orderId}` : "/dashboard"
+        }
+      }
+    };
+
+    const { getMessaging } = await import("firebase-admin/messaging");
+    await getMessaging().send(payload);
+
+    console.log(`[Notification Service] Admin Notification & Push Sent: ${title}`);
+    return true;
+  } catch (error) {
+    console.error("[Notification Service] Failed to create admin notification:", error);
+    return false;
+  }
+};
+
+/**
+ * Subscribe a token to the admin alerts topic
+ */
+export const subscribeToAdminAlerts = async (token: string) => {
+  try {
+    const { getMessaging } = await import("firebase-admin/messaging");
+    await getMessaging().subscribeToTopic([token], "admin_alerts");
+    console.log(`[Notification Service] Token subscribed to admin_alerts.`);
+    return true;
+  } catch (error: any) {
+    console.error("[Notification Service] Topic subscription failed:", error);
+    return false;
+  }
+};

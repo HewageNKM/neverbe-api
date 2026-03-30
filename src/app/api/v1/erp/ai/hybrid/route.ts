@@ -6,7 +6,7 @@ export const GET = async (req: NextRequest) => {
     const searchParams = req.nextUrl.searchParams;
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    const intelligence = await getHybridIntelligence(forceRefresh);
+    const intelligence = await getHybridIntelligence();
 
     return NextResponse.json({
       success: true,

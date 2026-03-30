@@ -3,6 +3,7 @@ import { adminStorageBucket } from "@/firebase/firebaseAdmin";
 import { errorResponse } from "@/utils/apiResponse";
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/services/AuthService";
+import { uploadFile } from "@/services/StorageService";
 
 export const GET = async (req: Request) => {
   try {

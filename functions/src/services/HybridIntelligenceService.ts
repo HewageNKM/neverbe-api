@@ -106,6 +106,36 @@ export const updateHybridIntelligence = async () => {
       });
 
     console.log(`[HybridIntelligenceJob] Completed in ${Date.now() - startTime}ms`);
+
+    // 3. Automated Low Stock Notifications
+    if (lowStock.length > 0) {
+      try {
+        const docId = `STOCK_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const notification = {
+          type: "STOCK",
+          title: "Low Stock Alert",
+          message: `${lowStock.length} items are currently below the critical threshold. Review inventory immediately.`,
+          metadata: { itemCount: lowStock.length },
+          read: false,
+          createdAt: new Date()
+        };
+        await admin.firestore().collection("erp_notifications").doc(docId).set(notification);
+        
+        // Send Push
+        const { getMessaging } = await import("firebase-admin/messaging");
+        await getMessaging().send({
+          topic: "admin_alerts",
+          notification: {
+            title: notification.title,
+            body: notification.message
+          },
+          webpush: { fcmOptions: { link: "/inventory" } }
+        });
+      } catch (notifyErr) {
+        console.error("[HybridIntelligenceJob] Failed to send low stock notification", notifyErr);
+      }
+    }
+
     return finalResult;
 
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeAndGetUser } from "@/services/AuthService";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getGenAI } from "@/services/AIService";
 import { errorResponse } from "@/utils/apiResponse";
 
 export const POST = async (req: Request) => {
@@ -24,11 +24,8 @@ export const POST = async (req: Request) => {
       return errorResponse("Product name is required", 400);
     }
 
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY is not set");
-
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+    const genAI = getGenAI();
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const details = [
       name && `Product: ${name}`,

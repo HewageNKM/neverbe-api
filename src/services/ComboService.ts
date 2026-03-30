@@ -19,6 +19,7 @@ const uploadThumbnail = async (
   return {
     url: url,
     file: filePath,
+    order: 0,
   };
 };
 

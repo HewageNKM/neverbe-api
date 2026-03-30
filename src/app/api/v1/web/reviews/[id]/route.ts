@@ -4,12 +4,13 @@ import { NextResponse } from "next/server";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = await verifyToken(req);
     const uid = token.uid;
-    const reviewId = params.id;
+    const reviewId = id;
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
@@ -30,12 +31,13 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = await verifyToken(req);
     const uid = token.uid;
-    const reviewId = params.id;
+    const reviewId = id;
 
     const result = await deleteReview(uid, reviewId);
 

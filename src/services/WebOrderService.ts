@@ -6,6 +6,7 @@ import {
   sendOrderConfirmedSMS,
   isOTPVerifiedRecently,
   consumeOTPVerification,
+  createAdminNotification,
 } from "./NotificationService";
 import { updateOrAddOrderHash } from "./IntegrityService";
 import { Order } from "@/model/Order";
@@ -399,6 +400,14 @@ export const addWebOrder = async (order: Partial<Order>) => {
         if (isCOD && userPhone) {
           await consumeOTPVerification(userPhone);
         }
+
+        // --- Create Admin Notification for New Order ---
+        await createAdminNotification(
+          "ORDER",
+          "New Website Order",
+          `Order #${order.orderId?.toUpperCase()} placed by ${order.customer?.name || "Guest"}. Total: Rs.${order.total?.toFixed(2)}`,
+          { orderId: order.orderId, customerName: order.customer?.name }
+        );
         
         success = true;
       } catch (err) {
