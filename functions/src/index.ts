@@ -12,8 +12,8 @@ import * as admin from "firebase-admin";
 
 admin.initializeApp();
 
-// Export jobs
 export * from "./jobs/cleanupFailedOrders";
+export * from "./jobs/trainAIModels";
 
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
