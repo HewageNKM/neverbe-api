@@ -16,7 +16,7 @@ export const getGenAI = () => {
  */
 export const processContextualChat = async (contextData: any, messages: any[]) => {
   const model = getGenAI().getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: "You are an ERP Intelligent Assistant. Help the user with their business questions using the provided context."
   });
 
@@ -33,7 +33,7 @@ export const processContextualChat = async (contextData: any, messages: any[]) =
  * Generate product description from title and features
  */
 export const generateDescription = async (title: string, features: string[]) => {
-  const model = getGenAI().getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = getGenAI().getGenerativeModel({ model: "gemini-2.5-flash" });
   const prompt = `Create a professional product description for "${title}" with these features: ${features.join(", ")}`;
   
   const result = await model.generateContent(prompt);
