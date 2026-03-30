@@ -28,6 +28,7 @@ export interface NeuralContext {
   inventory: any[];
   productMap: Map<string, any>;
   finance: any;
+  orderStats: { pending: number; processing: number; shipped: number; cancelled: number };
 }
 
 // --- Implementation ---
@@ -41,7 +42,7 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-  const [ordersSnap, inventorySnap, bankSnap, invSnap, cashSnap] = await Promise.all([
+  const [ordersSnap, inventorySnap, bankSnap, invSnap, cashSnap, statusSnap] = await Promise.all([
     admin.firestore().collection(COLLECTION_ORDERS)
       .where("paymentStatus", "==", "Paid")
       .where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo))
@@ -49,7 +50,8 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
     admin.firestore().collection(COLLECTION_INVENTORY).get(),
     admin.firestore().collection("bank_accounts").get(),
     admin.firestore().collection("supplier_invoices").where("status", "!=", "Paid").get(),
-    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("status", "==", "APPROVED").where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
+    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("status", "==", "APPROVED").where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get(),
+    admin.firestore().collection(COLLECTION_ORDERS).where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
   ]);
 
   const productIds = Array.from(new Set(inventorySnap.docs.map(d => d.data().productId)));
@@ -64,6 +66,16 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
     .filter(d => d.data().type === "expense")
     .reduce((acc, d) => acc + (d.data().amount || 0), 0);
 
+  // Status mapping
+  const orderStats = { pending: 0, processing: 0, shipped: 0, cancelled: 0 };
+  statusSnap.docs.forEach(doc => {
+    const s = doc.data().status;
+    if (s === 'PENDING') orderStats.pending++;
+    else if (s === 'PROCESSING') orderStats.processing++;
+    else if (s === 'SHIPPED') orderStats.shipped++;
+    else if (s === 'CANCELLED') orderStats.cancelled++;
+  });
+
   return {
     orders90d: ordersSnap.docs.map(d => ({ ...d.data(), id: d.id, createdAt: d.data().createdAt.toDate() })),
     inventory: inventorySnap.docs.map(d => ({ ...d.data(), id: d.id })),
@@ -72,7 +84,8 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
       totalBalance,
       totalPayable,
       dailyExpenseVelocity: totalExpenses / 90
-    }
+    },
+    orderStats
   };
 };
 
@@ -143,25 +156,40 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
 };
 
 export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint[]> => {
-  let query = admin.firestore()
-    .collection(COLLECTION_ORDERS)
-    .where("paymentStatus", "==", "Paid");
-
   const lookback = days && days > 0 ? days : 365;
   const start = new Date();
+  start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - lookback);
-  query = query.where("createdAt", ">=", Timestamp.fromDate(start));
 
-  const snap = await query.orderBy("createdAt", "asc").get();
+  const query = admin.firestore()
+    .collection(COLLECTION_ORDERS)
+    .where("paymentStatus", "==", "Paid")
+    .where("createdAt", ">=", Timestamp.fromDate(start));
 
+  const snap = await query.get();
+
+  // 1. Initialize complete dailyMap with 0s for the entire range
   const dailyMap: Record<string, number> = {};
+  for (let i = 0; i <= lookback; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split("T")[0];
+    dailyMap[dateStr] = 0;
+  }
+
+  // 2. Merge actual order data
   snap.docs.forEach(doc => {
     const order = doc.data();
-    const date = order.createdAt.toDate().toISOString().split("T")[0];
-    dailyMap[date] = (dailyMap[date] || 0) + (order.total - (order.fee || 0));
+    const dateStr = order.createdAt.toDate().toISOString().split("T")[0];
+    if (dailyMap[dateStr] !== undefined) {
+      dailyMap[dateStr] += (order.total - (order.fee || 0));
+    }
   });
 
-  return Object.entries(dailyMap).map(([date, netSales]) => ({ date, netSales }));
+  // 3. Return as sorted HistoricalPoint array
+  return Object.entries(dailyMap)
+    .map(([date, netSales]) => ({ date, netSales }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 };
 
 // --- Optimized Neural Analyzers ---
@@ -216,7 +244,11 @@ export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14)
   ctx.orders90d.forEach(order => {
     if (order.items) {
       order.items.forEach((item: any) => {
-        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 90);
+        // Unified mapping: use productId or falls back to known ID fields
+        const pId = item.productId || item.itemId || item.id;
+        if (pId) {
+          velocityMap[pId] = (velocityMap[pId] || 0) + (item.quantity / 90);
+        }
       });
     }
   });
@@ -228,13 +260,26 @@ export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14)
 
     if (velocity > 0 && item.quantity < projectedDemand) {
       const pData = ctx.productMap.get(item.productId);
+      const daysRemaining = Math.max(0, Math.floor(item.quantity / velocity));
+      
       risks.push({
         productId: item.productId,
-        name: pData?.name || "Unknown",
-        currentStock: item.quantity,
-        projectedDemand: Math.ceil(projectedDemand),
-        riskLevel: item.quantity < (projectedDemand / 2) ? "CRITICAL" : "HIGH",
-        daysRemaining: Math.floor(item.quantity / velocity)
+        name: pData?.name || item.name || "Unknown Product",
+        quantity: item.quantity,
+        velocity,
+        daysRemaining,
+        riskLevel: daysRemaining <= 3 ? "CRITICAL" : "HIGH"
+      });
+    } else if (item.quantity <= 0) {
+      // Immediate alert for zero/negative stock
+      const pData = ctx.productMap.get(item.productId);
+      risks.push({
+        productId: item.productId,
+        name: pData?.name || item.name || "Unknown Product",
+        quantity: item.quantity,
+        velocity: 0,
+        daysRemaining: 0,
+        riskLevel: "CRITICAL"
       });
     }
   });

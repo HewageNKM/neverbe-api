@@ -1,6 +1,6 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { updateHybridIntelligence } from "../services/HybridIntelligenceService";
+import { updateNeuralCoreFeed } from "../services/NeuralIntelligenceService";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 
@@ -9,9 +9,9 @@ export const trainAIModels = onSchedule({
   memory: "4GiB",
   timeoutSeconds: 300
 }, async (event) => {
-  logger.info("[trainAIModels] Starting scheduled ML training job...");
+  logger.info("[trainAIModels] Starting unified Neural Core synchronization...");
   try {
-    const result = await updateHybridIntelligence();
+    const result = await updateNeuralCoreFeed(true);
     logger.info("[trainAIModels] Success:", result.data.generatedAt);
   } catch (error) {
     logger.error("[trainAIModels] Fatal error in ML job:", error);
@@ -33,7 +33,7 @@ export const triggerManualTraining = onCall({
   logger.info(`[triggerManualTraining] Manual job requested by ${request.auth.token.email}`);
 
   try {
-    const result = await updateHybridIntelligence();
+    const result = await updateNeuralCoreFeed(true);
     
     // Send background notification to all admins via topic
     const messaging = admin.messaging();

@@ -147,16 +147,55 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
         neuralRisks,
         finance: ctx.finance,
         promoSuggestions,
-        customerRetention
+        customerRetention,
+        orderStats: ctx.orderStats
       },
       projections: tfResult,
       generatedAt: new Date().toISOString()
     };
 
+    const expiryDate = new Date();
+    expiryDate.setHours(expiryDate.getHours() + 24);
+    const expiryTimestamp = admin.firestore.Timestamp.fromDate(expiryDate);
+
     await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).set({
       data: finalFeed,
+      expiry: expiryTimestamp,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
+
+    // 7. System-Wide Unified Push (The Pervasive Pulse)
+    const publishNeuralNotifications = async (items: any[]) => {
+      const lastNotify = cacheDoc.data()?.lastSystemNotificationAt?.toDate() || new Date(0);
+      const hoursSinceLast = (Date.now() - lastNotify.getTime()) / (1000 * 60 * 60);
+
+      // Only notify if it's been 12h or if we have critical new items
+      if (hoursSinceLast >= 12 && items.length > 0) {
+        const batch = admin.firestore().batch();
+        const notifyCol = admin.firestore().collection("erp_notifications");
+        
+        // Take top 3 critical interventions to avoid flooding
+        items.filter(i => i.priority === 'CRITICAL').slice(0, 3).forEach(item => {
+          const docRef = notifyCol.doc(`NEURAL_${item.type}_${Date.now()}`);
+          batch.set(docRef, {
+            type: "AI",
+            title: `Neural Core: ${item.title}`,
+            message: item.desc,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            metadata: { ...item, source: 'NEURAL_CORE_PERVASIVE' }
+          });
+        });
+
+        await batch.commit();
+        await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({
+          lastSystemNotificationAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[NeuralCore] System-wide push notifications dispatched.`);
+      }
+    };
+
+    await publishNeuralNotifications(interventions);
 
     console.log(`[NeuralCore] Synchronization stable in ${Date.now() - startTime}ms`);
     return { success: true, data: finalFeed };
