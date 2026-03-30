@@ -3,8 +3,6 @@ import { getHybridIntelligence } from "@/services/HybridIntelligenceService";
 
 export const GET = async (req: NextRequest) => {
   try {
-    const searchParams = req.nextUrl.searchParams;
-
     const intelligence = await getHybridIntelligence();
 
     return NextResponse.json(intelligence);
