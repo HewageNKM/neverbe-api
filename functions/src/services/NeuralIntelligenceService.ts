@@ -35,7 +35,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     // 1. Fetch Dynamic Neural Configuration
     const settingsDoc = await admin.firestore().collection(SETTINGS_COLLECTION).doc(SETTINGS_KEY).get();
     const config = settingsDoc.data() || {
-      historicalRunway: 120,
+      historicalRunway: 365,
       forecastWindow: 14,
       weightingMode: 'BALANCED'
     };

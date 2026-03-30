@@ -163,7 +163,7 @@ export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint
 
   const query = admin.firestore()
     .collection(COLLECTION_ORDERS)
-    .where("paymentStatus", "==", "Paid")
+    .where("status", "not-in", ["Cancelled", "Refunded", "Failed"])
     .where("createdAt", ">=", Timestamp.fromDate(start));
 
   const snap = await query.get();
