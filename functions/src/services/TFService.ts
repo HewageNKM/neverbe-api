@@ -60,8 +60,11 @@ export const generateSalesForecast = async (
     currentWindow = [...currentWindow.slice(1), predValue];
   }
 
+  const avgForecastedDaily = predictions.reduce((acc, p) => acc + p.netSales, 0) / predictions.length;
+
   return {
     success: true,
+    avgForecastedDaily,
     predictions: [
       ...historicalData.map(d => ({ ...d, isForecast: false })),
       ...predictions

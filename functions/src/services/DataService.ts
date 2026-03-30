@@ -213,3 +213,23 @@ export const getNeuralStockRisks = async (daysToForecast = 14) => {
 
   return risks.sort((a, b) => a.daysRemaining - b.daysRemaining).slice(0, 10);
 };
+export const getFinanceSnapshot = async () => {
+  const [bankSnap, invSnap, cashSnap] = await Promise.all([
+    admin.firestore().collection("bank_accounts").get(),
+    admin.firestore().collection("supplier_invoices").where("status", "!=", "Paid").get(),
+    admin.firestore().collection("petty_cash").where("createdAt", ">=", Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))).get()
+  ]);
+
+  const totalBalance = bankSnap.docs.reduce((acc, d) => acc + (d.data().balance || 0), 0);
+  const totalPayable = invSnap.docs.reduce((acc, d) => acc + (d.data().amount || 0), 0);
+  
+  // Daily Expense Velocity (30d)
+  const totalExpenses = cashSnap.docs.reduce((acc, d) => acc + (d.data().amount || 0), 0);
+  const dailyExpenseVelocity = totalExpenses / 30;
+
+  return {
+    totalBalance,
+    totalPayable,
+    dailyExpenseVelocity
+  };
+};

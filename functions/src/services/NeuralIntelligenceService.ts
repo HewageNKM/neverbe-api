@@ -7,7 +7,8 @@ import {
   getLowStockRisks,
   getPopularItems,
   getHistoricalSales,
-  getNeuralStockRisks
+  getNeuralStockRisks,
+  getFinanceSnapshot
 } from "./DataService";
 
 const CACHE_COLLECTION = "dashboard_cache";
@@ -28,14 +29,15 @@ export const updateNeuralCoreFeed = async () => {
       weightingMode: 'BALANCED'
     };
 
-    // 1. Data Aggregation (Reality & Neural Risks)
-    const [historical, snapshot, comparison, lowStock, popular, neuralRisks] = await Promise.all([
+    // 1. Data Aggregation (Reality, Neural Risks & Finance)
+    const [historical, snapshot, comparison, lowStock, popular, neuralRisks, finance] = await Promise.all([
       getHistoricalSales(config.historicalRunway || 120),
       getDailySnapshot(),
       getMonthlyComparison(),
       getLowStockRisks(15),
       getPopularItems(10),
-      getNeuralStockRisks(config.forecastWindow || 14)
+      getNeuralStockRisks(config.forecastWindow || 14),
+      getFinanceSnapshot()
     ]);
 
     // 2. Neural Projection (Future)
@@ -45,6 +47,15 @@ export const updateNeuralCoreFeed = async () => {
     const salesVelocity = comparison.percentageChange.revenue;
     const inventoryRisk = lowStock.length > 5 ? Math.max(0, 100 - (lowStock.length * 5)) : 100;
     const profitStability = comparison.currentMonth.profit > 0 ? 100 : 50;
+
+    // Financial Resilience Score
+    const dailyRev = tfResult.success ? (tfResult as any).avgForecastedDaily : (comparison.currentMonth.revenue / 30);
+    const projectedRevenue = dailyRev * (config.forecastWindow || 14);
+    const projectedExpenses = finance.dailyExpenseVelocity * (config.forecastWindow || 14);
+    const totalOutflow = finance.totalPayable + projectedExpenses;
+    const totalInflow = finance.totalBalance + projectedRevenue;
+
+    const financialResilience = Math.min(100, Math.round((totalInflow / (totalOutflow || 1)) * 50));
     
     // Applying Weighting Mode
     let wTrends = 0.4, wStock = 0.3, wProfit = 0.3;
@@ -73,6 +84,16 @@ export const updateNeuralCoreFeed = async () => {
         priority: "CRITICAL",
         title: "Vigorous Revenue Drift",
         desc: `Sales are down ${Math.abs(salesVelocity)}% vs last month. Immediate promotion advised.`
+      });
+    }
+
+    // Financial Liquidity Alert
+    if (financialResilience < 40) {
+      interventions.push({
+        type: "FINANCE",
+        priority: "CRITICAL",
+        title: "Liquidity Constraint Predicted",
+        desc: `Projected inflow (Rs ${Math.round(projectedRevenue).toLocaleString()}) won't cover upcoming payables and expenses.`
       });
     }
 
@@ -137,6 +158,7 @@ export const updateNeuralCoreFeed = async () => {
         - Forecast: ${salesVelocity >= 0 ? 'GROWTH' : 'CONTRACTION'} phase.
         - Low Stock: ${lowStock.length} alerts.
         - Ghost Stockouts: ${neuralRisks.length} at risk.
+        - Strategic Finance: Resilience at ${financialResilience}%
         
         Provide a ultra-concise, professional status update.
       `;
@@ -147,6 +169,7 @@ export const updateNeuralCoreFeed = async () => {
 
     const finalFeed = {
       healthScore,
+      financialResilience,
       briefing: briefing || "Neural optimization in progress.",
       interventions,
       reality: {
@@ -154,7 +177,8 @@ export const updateNeuralCoreFeed = async () => {
         comparison,
         lowStock,
         popular,
-        neuralRisks
+        neuralRisks,
+        finance
       },
       projections: tfResult,
       generatedAt: new Date().toISOString()
