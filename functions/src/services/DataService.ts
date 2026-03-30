@@ -24,7 +24,7 @@ export interface HistoricalPoint {
 }
 
 export interface NeuralContext {
-  orders30d: any[];
+  orders90d: any[];
   inventory: any[];
   productMap: Map<string, any>;
   finance: any;
@@ -38,18 +38,18 @@ export interface NeuralContext {
  * Reduces Firestore Read costs by 50-70%.
  */
 export const getNeuralRawContext = async (): Promise<NeuralContext> => {
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   const [ordersSnap, inventorySnap, bankSnap, invSnap, cashSnap] = await Promise.all([
     admin.firestore().collection(COLLECTION_ORDERS)
       .where("paymentStatus", "==", "Paid")
-      .where("createdAt", ">=", Timestamp.fromDate(thirtyDaysAgo))
+      .where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo))
       .get(),
     admin.firestore().collection(COLLECTION_INVENTORY).get(),
     admin.firestore().collection("bank_accounts").get(),
     admin.firestore().collection("supplier_invoices").where("status", "!=", "Paid").get(),
-    admin.firestore().collection("petty_cash").where("createdAt", ">=", Timestamp.fromDate(thirtyDaysAgo)).get()
+    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
   ]);
 
   const productIds = Array.from(new Set(inventorySnap.docs.map(d => d.data().productId)));
@@ -60,16 +60,18 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
 
   const totalBalance = bankSnap.docs.reduce((acc, d) => acc + (d.data().balance || 0), 0);
   const totalPayable = invSnap.docs.reduce((acc, d) => acc + (d.data().amount || 0), 0);
-  const totalExpenses = cashSnap.docs.reduce((acc, d) => acc + (d.data().amount || 0), 0);
+  const totalExpenses = cashSnap.docs
+    .filter(d => d.data().type === "expense")
+    .reduce((acc, d) => acc + (d.data().amount || 0), 0);
 
   return {
-    orders30d: ordersSnap.docs.map(d => ({ ...d.data(), id: d.id })),
+    orders90d: ordersSnap.docs.map(d => ({ ...d.data(), id: d.id, createdAt: d.data().createdAt.toDate() })),
     inventory: inventorySnap.docs.map(d => ({ ...d.data(), id: d.id })),
     productMap,
     finance: {
       totalBalance,
       totalPayable,
-      dailyExpenseVelocity: totalExpenses / 30
+      dailyExpenseVelocity: totalExpenses / 90
     }
   };
 };
@@ -93,14 +95,14 @@ const getSalesByRange = async (start: Date, end: Date) => {
     const total = order.total || 0;
     const fee = order.fee || 0;
     const discount = order.discount || 0;
-    
+
     totalNetSales += (total - fee);
     totalGrossSales += (total + discount - fee);
-    
+
     if (Array.isArray(order.items)) {
-       order.items.forEach((item: any) => {
-         totalCOGS += (item.bPrice || 0) * (item.quantity || 0);
-       });
+      order.items.forEach((item: any) => {
+        totalCOGS += (item.bPrice || 0) * (item.quantity || 0);
+      });
     }
   });
 
@@ -118,7 +120,7 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
   const now = new Date();
   const cStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const cEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  
+
   const lStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
@@ -149,7 +151,7 @@ export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint
   const start = new Date();
   start.setDate(start.getDate() - lookback);
   query = query.where("createdAt", ">=", Timestamp.fromDate(start));
-  
+
   const snap = await query.orderBy("createdAt", "asc").get();
 
   const dailyMap: Record<string, number> = {};
@@ -164,12 +166,57 @@ export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint
 
 // --- Optimized Neural Analyzers ---
 
+export const analyzeNeuralCustomerRetention = (ctx: NeuralContext) => {
+  const customerMap: Record<string, any> = {};
+
+  ctx.orders90d.forEach(order => {
+    const cid = order.customerEmail || order.customerPhone || "Anonymous";
+    if (!customerMap[cid]) {
+      customerMap[cid] = { id: cid, orders: [], totalSpent: 0 };
+    }
+    customerMap[cid].orders.push(order);
+    customerMap[cid].totalSpent += (order.total - (order.fee || 0));
+  });
+
+  const atRisk: any[] = [];
+  const now = new Date();
+
+  Object.values(customerMap).forEach((c: any) => {
+    if (c.orders.length < 2) return; // Need recurrence to predict churn
+
+    const sorted = c.orders.sort((a: any, b: any) => b.createdAt - a.createdAt);
+    const lastPurchase = sorted[0].createdAt;
+    const daysSinceLast = (now.getTime() - lastPurchase.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Calculate average gap
+    let totalGap = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      totalGap += (sorted[i].createdAt - sorted[i + 1].createdAt) / (1000 * 60 * 60 * 24);
+    }
+    const avgGap = totalGap / (sorted.length - 1);
+
+    // At Risk: Current delay > 1.5x average gap AND at least 14 days since last buy
+    if (daysSinceLast > (avgGap * 1.5) && daysSinceLast > 14) {
+      atRisk.push({
+        customerId: c.id,
+        name: c.orders[0].customerName || "Customer",
+        totalSpent: c.totalSpent,
+        avgGap: Math.round(avgGap),
+        daysSinceLast: Math.round(daysSinceLast),
+        riskLevel: daysSinceLast > (avgGap * 3) ? "CRITICAL" : "HIGH"
+      });
+    }
+  });
+
+  return atRisk.sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
+};
+
 export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14) => {
   const velocityMap: Record<string, number> = {};
-  ctx.orders30d.forEach(order => {
+  ctx.orders90d.forEach(order => {
     if (order.items) {
       order.items.forEach((item: any) => {
-        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 30);
+        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 90);
       });
     }
   });
@@ -197,10 +244,10 @@ export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14)
 
 export const analyzeNeuralPromoStrategy = (ctx: NeuralContext) => {
   const velocityMap: Record<string, number> = {};
-  ctx.orders30d.forEach(order => {
+  ctx.orders90d.forEach(order => {
     if (order.items) {
       order.items.forEach((item: any) => {
-        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 30);
+        velocityMap[item.itemId] = (velocityMap[item.itemId] || 0) + (item.quantity / 90);
       });
     }
   });

@@ -7,7 +7,8 @@ import {
   getHistoricalSales,
   getNeuralRawContext,
   analyzeNeuralStockRisks,
-  analyzeNeuralPromoStrategy
+  analyzeNeuralPromoStrategy,
+  analyzeNeuralCustomerRetention
 } from "./DataService";
 
 const CACHE_COLLECTION = "dashboard_cache";
@@ -15,12 +16,23 @@ const CACHE_KEY = "neural_core_feed";
 const SETTINGS_COLLECTION = "app_settings";
 const SETTINGS_KEY = "neural_config";
 
-export const updateNeuralCoreFeed = async () => {
+export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
   const startTime = Date.now();
-  console.log("[NeuralCore] Orchestrating global analysis (Unified Mode)...");
-
+  
   try {
-    // 0. Fetch Dynamic Neural Configuration
+    // 0. Cache Guard (Soft Refresh Optimization)
+    const cacheDoc = await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
+    const lastUpdate = cacheDoc.data()?.updatedAt?.toDate() || new Date(0);
+    const minsSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60);
+
+    if (!forceRefresh && minsSinceUpdate < 15 && cacheDoc.exists) {
+      console.log("[NeuralCore] Soft Refresh: Returning recent analysis (within 15m window).");
+      return { success: true, data: cacheDoc.data()?.data, cached: true };
+    }
+
+    console.log("[NeuralCore] Orchestrating global analysis (Force/Hard Refresh)...");
+
+    // 1. Fetch Dynamic Neural Configuration
     const settingsDoc = await admin.firestore().collection(SETTINGS_COLLECTION).doc(SETTINGS_KEY).get();
     const config = settingsDoc.data() || {
       historicalRunway: 120,
@@ -36,14 +48,15 @@ export const updateNeuralCoreFeed = async () => {
       getNeuralRawContext()
     ]);
 
-    // 2. Optimized Neural Analyzers (Context-Shared)
-    const neuralRisks = analyzeNeuralStockRisks(ctx, config.forecastWindow || 14);
-    const promoSuggestions = analyzeNeuralPromoStrategy(ctx);
-    
     // 3. Neural Projection (Future)
     const tfResult = await generateSalesForecast(config.forecastWindow || 14, historical);
+
+    // 4. Intelligence Modules (Context-Shared)
+    const neuralRisks = analyzeNeuralStockRisks(ctx, config.forecastWindow || 14);
+    const promoSuggestions = analyzeNeuralPromoStrategy(ctx);
+    const customerRetention = analyzeNeuralCustomerRetention(ctx);
     
-    // 4. Global Health Calculation (Refined Logic)
+    // 5. Global Health Calculation (Refined Logic)
     const salesVelocity = comparison.percentageChange.revenue;
     const inventoryRisk = Math.max(0, 100 - (neuralRisks.length * 10)); // 10% penalty per critical risk
     const profitStability = comparison.currentMonth.profit > 0 ? 100 : 50;
@@ -70,7 +83,7 @@ export const updateNeuralCoreFeed = async () => {
       (profitStability * wProfit)         
     );
 
-    // 5. Autonomous Interventions
+    // 6. Autonomous Interventions
     const interventions: any[] = [];
     if (salesVelocity < -20) {
       interventions.push({ type: "REVENUE", priority: "CRITICAL", title: "Vigorous Revenue Drift", desc: "Sales momentum is trailing last month significantly." });
@@ -81,6 +94,11 @@ export const updateNeuralCoreFeed = async () => {
     if (neuralRisks.length > 0) {
       neuralRisks.forEach(risk => {
         interventions.push({ type: "INVENTORY", priority: risk.riskLevel, title: `Neural Stock Out: ${risk.name}`, desc: `Predicted depletion in ${risk.daysRemaining} days.` });
+      });
+    }
+    if (customerRetention.length > 0) {
+      customerRetention.filter(c => c.riskLevel === 'CRITICAL').forEach(c => {
+         interventions.push({ type: "REVENUE", priority: "CRITICAL", title: `Churn Alert: ${c.name}`, desc: `Frequent high-spender has breached 90-day purchase gap.` });
       });
     }
 
@@ -128,7 +146,8 @@ export const updateNeuralCoreFeed = async () => {
         popular: [], // Placeholder for backward compatibility
         neuralRisks,
         finance: ctx.finance,
-        promoSuggestions
+        promoSuggestions,
+        customerRetention
       },
       projections: tfResult,
       generatedAt: new Date().toISOString()
