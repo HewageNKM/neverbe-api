@@ -97,7 +97,9 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
           type: "INVENTORY", 
           priority: risk.riskLevel, 
           title: `Neural Stock Out: ${risk.name}`, 
-          desc: `Predicted depletion in ${risk.daysRemaining} days.`,
+          desc: risk.isOutOfStock 
+            ? "Product is currently OUT OF STOCK." 
+            : `Predicted depletion in ${risk.daysRemaining} days (AI Scaled Velocity).`,
           imageUrl: risk.imageUrl || null
         });
       });

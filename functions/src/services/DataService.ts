@@ -21,6 +21,7 @@ export interface MonthlyComparison {
 export interface HistoricalPoint {
   date: string;
   netSales: number;
+  orderCount: number;
 }
 
 export interface NeuralContext {
@@ -169,27 +170,30 @@ export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint
   const snap = await query.get();
 
   // 1. Initialize complete dailyMap with 0s for the entire range
-  const dailyMap: Record<string, number> = {};
+  const dailyMap: Record<string, { netSales: number; orderCount: number }> = {};
   for (let i = 0; i <= lookback; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
-    const dateStr = d.toISOString().split("T")[0];
-    dailyMap[dateStr] = 0;
+    const dateStr = d.toISOString().split('T')[0];
+    dailyMap[dateStr] = { netSales: 0, orderCount: 0 };
   }
 
   // 2. Merge actual order data
   snap.docs.forEach(doc => {
     const order = doc.data();
     const dateStr = order.createdAt.toDate().toISOString().split("T")[0];
-    if (dailyMap[dateStr] !== undefined) {
-      dailyMap[dateStr] += (order.total - (order.fee || 0));
+    if (dailyMap[dateStr]) {
+      dailyMap[dateStr].netSales += (order.total - (order.fee || 0));
+      dailyMap[dateStr].orderCount += 1;
     }
   });
 
   // 3. Return as sorted HistoricalPoint array
-  return Object.entries(dailyMap)
-    .map(([date, netSales]) => ({ date, netSales }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return Object.keys(dailyMap).sort().map(date => ({
+    date,
+    netSales: dailyMap[date].netSales,
+    orderCount: dailyMap[date].orderCount
+  }));
 };
 
 // --- Optimized Neural Analyzers ---
@@ -239,26 +243,41 @@ export const analyzeNeuralCustomerRetention = (ctx: NeuralContext) => {
   return atRisk.sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
 };
 
-export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14) => {
-  const velocityMap: Record<string, number> = {};
-  ctx.orders90d.forEach(order => {
-    if (order.items) {
-      order.items.forEach((item: any) => {
-        // Unified mapping: use productId or falls back to known ID fields
-        const pId = item.productId || item.itemId || item.id;
-        if (pId) {
-          velocityMap[pId] = (velocityMap[pId] || 0) + (item.quantity / 90);
-        }
-      });
-    }
-  });
+export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14, predictiveVelocityMap?: Record<string, number>) => {
+  const velocityMap: Record<string, number> = predictiveVelocityMap || {};
+  
+  // Only calculate historical fallback if predictive data is missing
+  if (!predictiveVelocityMap) {
+    ctx.orders90d.forEach(order => {
+      if (order.items) {
+        order.items.forEach((item: any) => {
+          const pId = item.productId || item.itemId || item.id;
+          if (pId) {
+            velocityMap[pId] = (velocityMap[pId] || 0) + (item.quantity / 90);
+          }
+        });
+      }
+    });
+  }
 
   const risks: any[] = [];
   ctx.inventory.forEach(item => {
     const velocity = velocityMap[item.productId] || 0;
     const projectedDemand = velocity * daysToForecast;
 
-    if (velocity > 0 && item.quantity < projectedDemand) {
+    if (item.quantity <= 0) {
+      const pData = ctx.productMap.get(item.productId);
+      risks.push({
+        productId: item.productId,
+        name: pData?.name || item.name || "Unknown Product",
+        imageUrl: pData?.imageUrl || item.image || null,
+        quantity: item.quantity,
+        velocity,
+        daysRemaining: 0,
+        isOutOfStock: true,
+        riskLevel: "CRITICAL"
+      });
+    } else if (velocity > 0 && item.quantity < projectedDemand) {
       const pData = ctx.productMap.get(item.productId);
       const daysRemaining = Math.max(0, Math.floor(item.quantity / velocity));
       
@@ -269,19 +288,8 @@ export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14)
         quantity: item.quantity,
         velocity,
         daysRemaining,
+        isOutOfStock: false,
         riskLevel: daysRemaining <= 3 ? "CRITICAL" : "HIGH"
-      });
-    } else if (item.quantity <= 0) {
-      // Immediate alert for zero/negative stock
-      const pData = ctx.productMap.get(item.productId);
-      risks.push({
-        productId: item.productId,
-        name: pData?.name || item.name || "Unknown Product",
-        imageUrl: pData?.imageUrl || item.image || null,
-        quantity: item.quantity,
-        velocity: 0,
-        daysRemaining: 0,
-        riskLevel: "CRITICAL"
       });
     }
   });
