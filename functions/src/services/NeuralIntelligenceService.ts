@@ -11,10 +11,39 @@ import {
   analyzeNeuralCustomerRetention
 } from "./DataService";
 
-const CACHE_COLLECTION = "dashboard_cache";
+const CACHE_COLLECTION = "neural_cache";
 const CACHE_KEY = "neural_core_feed";
 const SETTINGS_COLLECTION = "app_settings";
 const SETTINGS_KEY = "neural_config";
+
+/** 
+ * Local helper to create persistent Admin Notifications 
+ * with idempotency based on message hash.
+ */
+async function createAdminNotification(type: string, title: string, message: string, metadata: any = {}) {
+    try {
+        const db = admin.firestore();
+        // Simple hash check - avoid sending identical message within 24h
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        const existing = await db.collection("erp_notifications")
+            .where("title", "==", title)
+            .where("createdAt", ">", yesterday)
+            .limit(1)
+            .get();
+            
+        if (!existing.empty) return; // Skip duplicate within rolling 24h window
+
+        await db.collection("erp_notifications").add({
+            type, title, message, metadata,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (err) {
+        console.error("Failed to create neural notification", err);
+    }
+}
 
 export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
   const startTime = Date.now();
@@ -92,20 +121,34 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       interventions.push({ type: "FINANCE", priority: "CRITICAL", title: "Liquidity Constraint", desc: `${Math.round(financialResilience)}% Resilience. Cashflow needs optimization.` });
     }
     if (neuralRisks.length > 0) {
-      neuralRisks.forEach(risk => {
+      for (const risk of neuralRisks) {
         const productDetail = ctx.productMap.get(risk.productId);
+        const invTitle = `Neural Stock Out: ${risk.name}`;
+        const invDesc = risk.isOutOfStock 
+            ? "Product is currently OUT OF STOCK." 
+            : `Predicted depletion in ${risk.daysRemaining} days (AI Scaled Velocity).`;
+
         interventions.push({
           type: "INVENTORY",
           priority: risk.riskLevel || "CRITICAL",
-          title: `Neural Stock Out: ${risk.name}`,
-          desc: risk.isOutOfStock 
-            ? "Product is currently OUT OF STOCK." 
-            : `Predicted depletion in ${risk.daysRemaining} days (AI Scaled Velocity).`,
+          title: invTitle,
+          desc: invDesc,
           productId: risk.productId,
           sku: productDetail?.sku || "N/A",
           imageUrl: risk.imageUrl || null
         });
-      });
+
+        // Trigger persistent notification for critical risks
+        if (risk.riskLevel === 'CRITICAL') {
+           await createAdminNotification("AI", invTitle, invDesc, {
+              productId: risk.productId,
+              sku: productDetail?.sku || "N/A",
+              daysRemaining: risk.daysRemaining,
+              revenueRisk: (risk.velocity * 30 * (productDetail?.wholesalePrice || 0)).toFixed(0),
+              riskLevel: "CRITICAL"
+           });
+        }
+      }
     }
     if (customerRetention.length > 0) {
       customerRetention.filter(c => c.riskLevel === 'CRITICAL').forEach(c => {
