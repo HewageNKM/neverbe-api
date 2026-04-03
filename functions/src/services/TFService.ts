@@ -65,7 +65,12 @@ export const generateSalesForecast = async (
 
   model.compile({ optimizer: "adam", loss: "meanSquaredError" });
 
-  await model.fit(xs, ys, { epochs: 100, verbose: 0 });
+  const startTime = Date.now();
+  const history = await model.fit(xs, ys, { epochs: 100, verbose: 0 });
+  const trainingDurationMs = Date.now() - startTime;
+  const finalLoss = history.history.loss[history.history.loss.length - 1];
+
+  console.info(`[TFService] Benchmarks: ${inputs.length} windows | ${trainingDurationMs}ms | Loss: ${Number(finalLoss).toFixed(6)}`);
 
   const predictions: any[] = [];
   let currentWindow = dataset.slice(-windowSize);
@@ -97,6 +102,11 @@ export const generateSalesForecast = async (
       ...historicalData.map(d => ({ ...d, isForecast: false })),
       ...predictions
     ],
-    metrics: { dataPoints: historicalData.length }
+    metrics: { 
+      dataPoints: historicalData.length,
+      trainingDurationMs,
+      finalLoss: Number(finalLoss),
+      windows: inputs.length
+    }
   };
 };
