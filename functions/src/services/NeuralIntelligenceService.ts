@@ -160,8 +160,21 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     let briefing = "";
     
     const generateHeuristicBriefing = (hs: number, iv: any[]) => {
+      // 🟢 Growth/Optimal Quadrant
       if (hs >= 90 && iv.length === 0) return "Systems optimal. Catalog velocity and liquidity metrics are in a growth quadrant.";
       if (hs >= 80 && iv.every(i => i.priority !== 'CRITICAL')) return "Stability high. System is absorbing minor demand drifts effectively.";
+      
+      // 🔴 Critical Interventions (Safe-Mode Summary)
+      const criticals = iv.filter(i => i.priority === 'CRITICAL');
+      if (criticals.length > 0) {
+        const top = criticals[0];
+        if (criticals.length === 1) return `Neural Alert: ${top.title}. Action required to stabilize ${top.type.toLowerCase()} metrics.`;
+        return `Multi-Vector Disruption: ${criticals.length} critical neural risks detected. Prioritizing ${top.type} stabilization.`;
+      }
+
+      // 🟡 General Caution
+      if (hs < 70) return "Heightened volatility detected. Neural core suggesting a cautious position on inventory expansion.";
+      
       return null;
     };
 
@@ -183,8 +196,18 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
           const result = await model.generateContent(prompt);
           briefing = result.response.text();
           await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({ lastLLMUpdateTime: admin.firestore.FieldValue.serverTimestamp() });
-        } catch {
-          briefing = "Neural optimization in progress.";
+        } catch (err: any) {
+          console.error("[NeuralCore] LLM Generation Failed. Falling back to Enhanced Heuristic.", err.message);
+          
+          // Emergency Fallback: If heuristic was null and LLM failed, we MUST provide a real context briefing
+          const critical = interventions.find(i => i.priority === 'CRITICAL');
+          if (critical) {
+            briefing = `Risk Mitigation Active: ${critical.title} requires immediate administrative attention.`;
+          } else {
+            briefing = healthScore > 75 
+                ? "Neural core stable. Real-time optimization is active across all business sectors."
+                : "Market synchronization in progress. Refining predictive models for current volatility.";
+          }
         }
       }
     }
