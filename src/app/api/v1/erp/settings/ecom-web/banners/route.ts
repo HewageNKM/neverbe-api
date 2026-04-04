@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/services/AuthService";
 import { addABanner, getAllBanners } from "@/services/WebsiteService";
-import { uploadFile } from "@/services/StorageService";
+import { uploadCompressedImage, uploadFile } from "@/services/StorageService";
 import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
@@ -38,9 +38,14 @@ export const POST = async (req: Request) => {
       return errorResponse("Banner image is required", 400);
     }
 
-    const res = await uploadFile(bannerFile, path);
+    // Generate unique WebP filename
+    const timestamp = Date.now();
+    const cleanFileName = bannerFile.name.replace(/[^a-z0-9.]/gi, "_").split(".")[0];
+    const filePath = `${path}/${timestamp}_${cleanFileName}.webp`;
+
+    const url = await uploadCompressedImage(bannerFile, filePath);
     const writeResult = await addABanner({
-      ...res,
+      url,
       fileName: bannerFile.name,
     });
     return NextResponse.json(writeResult);
