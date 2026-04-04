@@ -47,9 +47,17 @@ export const PUT = async (
     }
 
     const data = JSON.parse(rawData);
-    if (!data.name || !data.status) {
+    if (!data.name || data.status === undefined) {
       return errorResponse("Name and Status are required", 400);
     }
+    
+    const file = formData.get("file") as File;
+    if (file) {
+      const { uploadCompressedImage } = await import("@/services/StorageService");
+      const path = `categories/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      data.imageUrl = await uploadCompressedImage(file, path);
+    }
+    
     const res = await updateCategory(categoryId, data);
     return NextResponse.json(res);
   } catch (e) {

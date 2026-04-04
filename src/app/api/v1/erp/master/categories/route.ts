@@ -39,6 +39,13 @@ export const POST = async (req: NextRequest) => {
     const category = JSON.parse(rawData);
     if (!category.name) return errorResponse("Name is required", 400);
 
+    const file = formData.get("file") as File;
+    if (file) {
+      const { uploadCompressedImage } = await import("@/services/StorageService");
+      const path = `categories/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      category.imageUrl = await uploadCompressedImage(file, path);
+    }
+
     const res = await createCategory(category);
     return NextResponse.json(res, { status: 201 });
   } catch (e) {

@@ -8,6 +8,8 @@ export interface Category {
   name: string;
   description?: string;
   active: boolean;
+  imageUrl?: string;
+  isFeatured?: boolean;
   isDeleted?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -165,6 +167,24 @@ export const getCategoriesForDropdown = async () => {
     return categories;
   } catch (error) {
     console.log(error);
+    return [];
+  }
+};
+export const getFeaturedCategories = async () => {
+  try {
+    const snapshot = await adminFirestore
+      .collection(COLLECTION)
+      .where("isDeleted", "==", false)
+      .where("active", "==", true)
+      .where("isFeatured", "==", true)
+      .get();
+
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Category),
+    }));
+  } catch (error) {
+    console.error("Get Featured Categories Error:", error);
     return [];
   }
 };
