@@ -1057,6 +1057,16 @@ export const calculateCartDiscount = async (
       const freeItemsCount = Math.floor(flatItems.length / 2); // 1 free for every pair
       
       currentDiscount = flatItems.slice(0, freeItemsCount).reduce((acc, price) => acc + price, 0);
+    } else if (action.type === "FREE_ITEM") {
+      // Return the price of the free item if it exists in the cart
+      if (action.freeProductId) {
+        const freeItem = eligibleItems.find(
+          (item) => item.productId === action.freeProductId,
+        );
+        if (freeItem) {
+          currentDiscount = freeItem.price;
+        }
+      }
     }
 
     if (action.type !== "FREE_SHIPPING") {
