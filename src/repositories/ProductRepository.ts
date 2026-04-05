@@ -240,34 +240,54 @@ export class ProductRepository extends BaseRepository<Product> {
   ): Promise<PaginatedResult<Product>> {
     const { page = 1, size = 20 } = options;
 
+    // 1. Get active promos to find targeted products
+    const { promotionRepository } = await import("./PromotionRepository");
+    const activePromos = await promotionRepository.findActive();
+    const promoProductIds = new Set<string>();
+    
+    activePromos.forEach(p => {
+        if (p.applicableProducts) p.applicableProducts.forEach(id => promoProductIds.add(id));
+        if (p.applicableProductVariants) p.applicableProductVariants.forEach(pv => promoProductIds.add(pv.productId));
+        if (p.conditions) {
+            p.conditions.forEach(c => {
+               if (c.type === "SPECIFIC_PRODUCT") {
+                   if (c.value) promoProductIds.add(c.value as string);
+                   if (c.productIds) c.productIds.forEach(id => promoProductIds.add(id));
+               }
+            });
+        }
+    });
+
     const builder = new FirestoreQueryBuilder(this.getListedProductsQuery());
     const filterBuilder = new ProductFilterBuilder(builder, options);
 
-    // 1. Discount filter is mandatory
-    filterBuilder.applyDiscountFilter();
-
-    // 2. Apply other optimized filters (Tags/Gender/Stock/Sort)
+    // 2. Apply other optimized filters (Tags/Gender/Stock/Sort) - EXCLUDING discount filter
+    // We don't call applyDiscountFilter() because we will filter in-memory
     filterBuilder.applyOptimizedFilters();
 
-    // 3. Count
-    const total = await this.countDocuments(builder.build());
-
-    // 4. Paginate
-    builder.paginate(page, size);
+    // 3. Fetch all matching base filters
     const snapshot = await builder.build().get();
 
-    let dataList = snapshot.docs
+    let allDocs = snapshot.docs
       .map((doc) => this.prepareProduct(doc.data() as Product))
       .filter((p) => (p.variants?.length ?? 0) > 0);
 
+    // 4. In-Memory Filter Deals (discount > 0 OR targeted by promo)
+    allDocs = allDocs.filter(p => (p.discount && p.discount > 0) || promoProductIds.has(p.id));
+
     // 5. Post-Fetch Filtering
     if (filterBuilder.needsGenderPostFilter()) {
-      dataList = this.filterByGender(dataList, options.gender!);
+      allDocs = this.filterByGender(allDocs, options.gender!);
     }
 
     if (filterBuilder.needsSizePostFilter()) {
-      dataList = this.filterBySizes(dataList, options.sizes!);
+      allDocs = this.filterBySizes(allDocs, options.sizes!);
     }
+
+    // 6. Manual Pagination
+    const total = allDocs.length;
+    const startIndex = (page - 1) * size;
+    const dataList = allDocs.slice(startIndex, startIndex + size);
 
     return { total, dataList };
   }

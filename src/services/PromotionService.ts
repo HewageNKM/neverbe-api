@@ -301,12 +301,14 @@ export const createCoupon = async (
   }
 };
 
-interface CartItem {
+export interface CartItem {
   productId: string;
-  variantId?: string;
+  variantId: string;
   quantity: number;
   price: number;
   discount?: number;
+  category?: string;
+  brand?: string;
 }
 
 /**
@@ -773,17 +775,51 @@ export const calculateCartDiscount = async (
         );
         continue;
       }
-    } else if (
+    } 
+    
+    // Check applicable products
+    if (
       promo.applicableProducts &&
       promo.applicableProducts.length > 0
     ) {
-      // Legacy applicableProducts eligibility check
       const hasApplicableProduct = cartItems.some((item) =>
         promo.applicableProducts!.includes(item.productId),
       );
       if (!hasApplicableProduct) {
         console.log(
           `[PromotionService] Skipped ${promo.id}: Applicable products check failed`,
+        );
+        continue;
+      }
+    }
+
+    // Check applicable categories
+    if (
+      promo.applicableCategories &&
+      promo.applicableCategories.length > 0
+    ) {
+      const hasApplicableCategory = cartItems.some((item) =>
+        item.category && promo.applicableCategories!.includes(item.category),
+      );
+      if (!hasApplicableCategory) {
+        console.log(
+          `[PromotionService] Skipped ${promo.id}: Applicable categories check failed`,
+        );
+        continue;
+      }
+    }
+
+    // Check applicable brands
+    if (
+      promo.applicableBrands &&
+      promo.applicableBrands.length > 0
+    ) {
+      const hasApplicableBrand = cartItems.some((item) =>
+        item.brand && promo.applicableBrands!.includes(item.brand),
+      );
+      if (!hasApplicableBrand) {
+        console.log(
+          `[PromotionService] Skipped ${promo.id}: Applicable brands check failed`,
         );
         continue;
       }
@@ -953,6 +989,20 @@ export const calculateCartDiscount = async (
       eligibleItems = cartItems.filter((item) =>
         promo.applicableProducts!.includes(item.productId),
       );
+    } else if (
+      (promo.applicableCategories && promo.applicableCategories.length > 0) ||
+      (promo.applicableBrands && promo.applicableBrands.length > 0)
+    ) {
+      // Filter by Category or Brand
+      eligibleItems = cartItems.filter((item) => {
+        const matchesCategory = promo.applicableCategories && promo.applicableCategories.length > 0
+          ? promo.applicableCategories.includes(item.category || "")
+          : true;
+        const matchesBrand = promo.applicableBrands && promo.applicableBrands.length > 0
+          ? promo.applicableBrands.includes(item.brand || "")
+          : true;
+        return matchesCategory && matchesBrand;
+      });
     }
 
     if (promo.excludedProducts && promo.excludedProducts.length > 0) {
@@ -973,9 +1023,32 @@ export const calculateCartDiscount = async (
       }
     } else if (action.type === "FIXED_OFF") {
       currentDiscount = action.value;
+    } else if (action.type === "FREE_SHIPPING") {
+      // NOTE: Free shipping discount is typically applied later in checkout flow once shipping cost is known,
+      // but to flag it as an active applied promotion, we add a nominal >0 discount OR explicitly add to eligible array.
+      // We will set a marker discount or 0 and conditionally push it below.
+      currentDiscount = 0; 
+    } else if (action.type === "BOGO") {
+      // BOGO Logic: Buy 1 Get 1 Free (simplest interpretation for action.value)
+      // Sort eligible items by price ascending
+      const flatItems = eligibleItems.flatMap(item => Array(item.quantity).fill(item.price));
+      flatItems.sort((a, b) => a - b);
+      
+      const freeItemsCount = Math.floor(flatItems.length / 2); // 1 free for every pair
+      
+      currentDiscount = flatItems.slice(0, freeItemsCount).reduce((acc, price) => acc + price, 0);
     }
 
-    if (currentDiscount > 0) {
+    if (action.type !== "FREE_SHIPPING") {
+      // Net offset: subtract any item.discount currently placed on cart items to block double-dipping overrides.
+      const eligibleItemDiscounts = eligibleItems.reduce(
+        (sum, item) => sum + (item.discount || 0),
+        0
+      );
+      currentDiscount = Math.max(0, Math.round(currentDiscount) - Math.round(eligibleItemDiscounts));
+    }
+
+    if (currentDiscount > 0 || action.type === "FREE_SHIPPING") {
       console.log(
         `[PromotionService] Eligible ${promo.id}: Discount ${currentDiscount}`,
       );

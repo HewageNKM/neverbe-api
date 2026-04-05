@@ -156,13 +156,18 @@ export const addWebOrder = async (order: Partial<Order>) => {
     }, 0);
 
     const promoResult = await calculateCartDiscount(
-      order.items.map((i) => ({
-        productId: i.itemId,
-        variantId: i.variantId,
-        quantity: i.quantity,
-        price: productMap.get(i.itemId)?.sellingPrice || 0,
-        discount: i.discount,
-      })),
+      order.items.map((i) => {
+        const prod = productMap.get(i.itemId);
+        return {
+          productId: i.itemId,
+          variantId: i.variantId || "",
+          quantity: i.quantity,
+          price: prod?.sellingPrice || 0,
+          discount: i.discount,
+          category: prod?.category,
+          brand: prod?.brand,
+        };
+      }),
       cartTotal,
       order.customer?.id || null,
     );
@@ -287,6 +292,14 @@ export const addWebOrder = async (order: Partial<Order>) => {
           : totalItems === 1
             ? SHIPPING_FLAT_RATE_1
             : SHIPPING_FLAT_RATE_2;
+    }
+
+    if (
+      promoResult.promotions?.some(
+        (p) => p.type === "FREE_SHIPPING" || p.actions?.[0]?.type === "FREE_SHIPPING"
+      )
+    ) {
+      serverShippingFee = 0;
     }
 
     const subtotalBeforeFees = itemsTotal - itemDiscounts;

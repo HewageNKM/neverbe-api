@@ -32,26 +32,34 @@ export class PromotionRepository extends BaseRepository<Promotion> {
   async findActive(): Promise<Promotion[]> {
     const now = new Date();
 
-    const snapshot = await this.collection
-      .where("isActive", "==", true)
-      .where("isDeleted", "!=", true)
-      // Firestore index limitation: we cannot reliably do multiple inequality filters
-      // on different fields (`isDeleted`, `endDate`, `startDate`) without explicit
-      // composite indexes.
-      // The filter logic below already exactly verifies the dates in-memory safely.
-      .get();
+    // Fetch all promotions and filter in-memory to avoid index issues
+    // and handle missing fields (e.g., missing isActive or isDeleted) safely
+    const snapshot = await this.collection.get();
 
     return snapshot.docs
       .map((doc) => this.serializePromotion(doc))
       .filter((promo) => {
+        // 1. Status Check (support both legacy `status` and `isActive` boolean)
+        const isStatusActive = promo.status === "ACTIVE" || promo.status === undefined;
+        const isBoolActive = promo.isActive === true || promo.isActive === undefined;
+        
+        // If explicitly inactive via either field, filter out
+        if (promo.status === "INACTIVE" || promo.isActive === false) return false;
+        
+        // Ensure not marked as deleted
+        if (promo.isDeleted === true) return false;
+
+        // 2. Date Check
         const startDate = promo.startDate
           ? new Date(promo.startDate as string)
           : null;
         const endDate = promo.endDate
           ? new Date(promo.endDate as string)
           : null;
+          
         if (startDate && now < startDate) return false;
         if (endDate && now > endDate) return false;
+        
         return true;
       });
   }
