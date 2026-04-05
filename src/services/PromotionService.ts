@@ -1042,7 +1042,7 @@ export const calculateCartDiscount = async (
         currentDiscount = action.maxDiscount;
       }
     } else if (action.type === "FIXED_OFF") {
-      currentDiscount = action.value;
+      currentDiscount = Math.min(action.value, eligibleTotal);
     } else if (action.type === "FREE_SHIPPING") {
       // NOTE: Free shipping discount is typically applied later in checkout flow once shipping cost is known,
       // but to flag it as an active applied promotion, we add a nominal >0 discount OR explicitly add to eligible array.
