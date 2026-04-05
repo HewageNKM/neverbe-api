@@ -409,6 +409,18 @@ export const addWebOrder = async (order: Partial<Order>) => {
           );
         }
 
+        // --- Track Promotion Usage ---
+        if (appliedPromotionIds && appliedPromotionIds.length > 0) {
+          for (const promoId of appliedPromotionIds) {
+            await adminFirestore
+              .collection("promotions")
+              .doc(promoId)
+              .update({
+                usageCount: admin.firestore.FieldValue.increment(1),
+              });
+          }
+        }
+
         // --- Consume OTP verification for COD ---
         if (isCOD && userPhone) {
           await consumeOTPVerification(userPhone);

@@ -760,6 +760,33 @@ export const calculateCartDiscount = async (
       continue;
     }
 
+    // Limit Checks
+    if (promo.usageLimit && promo.usageLimit > 0) {
+      if (promo.usageCount >= promo.usageLimit) {
+        console.log(
+          `[PromotionService] Skipped ${promo.id}: Global usage limit reached (${promo.usageCount}/${promo.usageLimit})`,
+        );
+        continue;
+      }
+    }
+
+    if (userId && promo.perUserLimit && promo.perUserLimit > 0) {
+      const userPromoUsage = await adminFirestore
+        .collection("orders")
+        .where("userId", "==", userId)
+        .where("appliedPromotionIds", "array-contains", promo.id)
+        .where("status", "!=", "CANCELLED")
+        .count()
+        .get();
+
+      if (userPromoUsage.data().count >= promo.perUserLimit) {
+        console.log(
+          `[PromotionService] Skipped ${promo.id}: User usage limit reached (${userPromoUsage.data().count}/${promo.perUserLimit})`,
+        );
+        continue;
+      }
+    }
+
     // Check variant-level targeting first (if defined)
     if (
       promo.applicableProductVariants &&
