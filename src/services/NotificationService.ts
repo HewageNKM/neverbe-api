@@ -405,7 +405,11 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
     // We cast to 'any' for total in case it's missing from your strict Order interface
     const totalRaw = (order as any).total || 0;
     const shippingRaw = order.shippingFee || 0;
-    const discountRaw = order.discount || 0;
+    
+    // Total discount = Item Discounts + Promotion Discount + Coupon Discount
+    const itemDiscountsRaw = safeItems.reduce((acc, item) => acc + (item.discount || 0), 0);
+    const promotionDiscountRaw = (order as any).promotionDiscount || 0;
+    const discountRaw = (order.discount || 0) + promotionDiscountRaw + itemDiscountsRaw;
 
     const emailPayload = {
       to: [email],
