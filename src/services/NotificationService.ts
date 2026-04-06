@@ -277,16 +277,8 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
     }
 
     const phone = order.customer.phone.trim();
-    const total =
-      calculateTotal(order.items) +
-      (order.fee || 0) +
-      (order.shippingFee || 0) -
-      (order.discount || 0);
-
     const customerName = order.customer.name.split(" ")[0];
-    const text = `NEVERBE: Got it, ${customerName}. Order #${orderId.toUpperCase()} is confirmed. Total: Rs.${total.toFixed(
-      2,
-    )}.`;
+    const text = `NEVERBE: Got it, ${customerName}. Order #${orderId.toUpperCase()} is confirmed.`;
     const hashValue = generateHash(phone + text);
 
     const existing = await adminFirestore
