@@ -163,7 +163,7 @@ export const addWebOrder = async (order: Partial<Order>) => {
           variantId: i.variantId || "",
           quantity: i.quantity,
           price: prod?.sellingPrice || 0,
-          discount: 0, // Don't pass item.discount — sellingPrice is already the net price; item discounts are accounted for separately in the subtotal calculation
+          discount: i.discount || 0,
           category: prod?.category,
           brand: prod?.brand,
         };
