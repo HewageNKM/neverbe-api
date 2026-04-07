@@ -122,23 +122,31 @@ export const getOverviewByDateRange = async (
 
       const orderTotal = order.total || 0;
       const orderDiscount = order.discount || 0;
+      const promoDiscount = order.promotionDiscount || 0;
       const orderShippingFee = order.shippingFee || 0;
       const orderTransactionFee = order.transactionFeeCharge || 0;
       const orderFee = order.fee || 0;
+
+      // Item-level discounts
+      const itemDiscounts = Array.isArray(order.items)
+        ? order.items.reduce((sum, item) => sum + (item.discount || 0), 0)
+        : 0;
+
+      const allDiscounts = orderDiscount + promoDiscount + itemDiscounts;
 
       // Match ReportService formulas:
       // Net Sale = total - orderFee
       const netSale = orderTotal - orderFee;
       totalNetSales += netSale;
 
-      // Gross Sale (Sales) = total + discount - orderFee
-      const grossSale = orderTotal + orderDiscount - orderFee;
+      // Gross Sale (Sales) = total + allDiscounts - orderFee - orderShippingFee
+      const grossSale = orderTotal + allDiscounts - orderFee - orderShippingFee;
       totalGrossSales += grossSale;
 
       totalShipping += orderShippingFee;
 
-      // Accumulate discount
-      totalDiscount += orderDiscount;
+      // Accumulate all discounts
+      totalDiscount += allDiscounts;
 
       // Calculate COGS from items (bPrice * quantity)
       if (Array.isArray(order.items)) {
@@ -281,7 +289,12 @@ export const getRecentOrders = async (
         ? data.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
         : 0;
 
-      const discountAmount = data.discount || 0;
+      // Aggregating all discounts: item-level + order coupons + auto promotions
+      const itemDiscounts = Array.isArray(data.items)
+        ? data.items.reduce((sum, item) => sum + (item.discount || 0), 0)
+        : 0;
+      const discountAmount = itemDiscounts + (data.discount || 0) + (data.promotionDiscount || 0);
+
       const netAmount = grossAmount - discountAmount;
 
       // Format date
