@@ -35,6 +35,7 @@ export const PUT = async (
       "SUBMITTED",
       "APPROVED",
       "REJECTED",
+      "COMPLETED",
     ];
     if (!validStatuses.includes(status)) {
       return errorResponse("Invalid status", 400);
