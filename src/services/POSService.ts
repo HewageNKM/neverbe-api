@@ -74,35 +74,40 @@ export const addItemToPosCart = async (item: POSCartItem, userId: string) => {
 
   await adminFirestore.runTransaction(async (tx) => {
     // 1️⃣ Fetch inventory item using productId, variantId, size, stockId
-    const inventoryQuery = await adminFirestore
+    const inventoryQuery = adminFirestore
       .collection("stock_inventory")
       .where("productId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
       .where("size", "==", item.size)
       .where("stockId", "==", item.stockId)
-      .limit(1)
-      .get();
+      .limit(1);
+    
+    const inventorySnap = await tx.get(inventoryQuery);
 
-    if (inventoryQuery.empty)
+    if (inventorySnap.empty)
       throw new AppError("Item not found in inventory", 404);
 
-    const inventoryRef = inventoryQuery.docs[0].ref;
-    const inventoryData = inventoryQuery.docs[0].data() as InventoryItem;
+    const inventoryRef = inventorySnap.docs[0].ref;
+    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
 
-    // 2️⃣ Check if requested quantity is bigger than available
+    // 2️⃣ Fetch product global stock
+    const productRef = adminFirestore.collection("products").doc(item.itemId);
+    const productSnap = await tx.get(productRef);
+
+    // --- ALL READS DONE, START WRITES ---
+
+    // 3️⃣ Check if requested quantity is bigger than available
     if (item.quantity > inventoryData.quantity) {
       console.warn(
         `Warning: Requested quantity (${item.quantity}) is greater than available stock (${inventoryData.quantity}) for productId: ${item.itemId}, size: ${item.size}, stockId: ${item.stockId}`,
       );
     }
 
-    // 3️⃣ Deduct stock (dont go minus)
+    // 4️⃣ Deduct stock (dont go minus)
     const newInvQty = inventoryData.quantity - item.quantity;
     tx.update(inventoryRef, { quantity: newInvQty });
 
-    // 4️⃣ Update product global stock
-    const productRef = adminFirestore.collection("products").doc(item.itemId);
-    const productSnap = await tx.get(productRef);
+    // 5️⃣ Update product global stock
     if (productSnap.exists) {
       const prodData = productSnap.data() as Product;
       const newTotalStock = (prodData.totalStock ?? 0) - item.quantity;
@@ -113,7 +118,7 @@ export const addItemToPosCart = async (item: POSCartItem, userId: string) => {
       });
     }
 
-    // 5️⃣ Add to POS cart
+    // 6️⃣ Add to POS cart
     tx.set(posCart.doc(), {
       ...item,
       userId: userId || "anonymous",
@@ -128,39 +133,27 @@ export const removeFromPosCart = async (item: POSCartItem, userId: string) => {
 
   await adminFirestore.runTransaction(async (tx) => {
     // 1️⃣ Fetch inventory item
-    const inventoryQuery = await adminFirestore
+    const inventoryQuery = adminFirestore
       .collection("stock_inventory")
       .where("productId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
       .where("size", "==", item.size)
       .where("stockId", "==", item.stockId)
-      .limit(1)
-      .get();
+      .limit(1);
+    
+    const inventorySnap = await tx.get(inventoryQuery);
 
-    if (inventoryQuery.empty)
+    if (inventorySnap.empty)
       throw new AppError("Item not found in inventory", 404);
 
-    const inventoryRef = inventoryQuery.docs[0].ref;
-    const inventoryData = inventoryQuery.docs[0].data() as InventoryItem;
+    const inventoryRef = inventorySnap.docs[0].ref;
+    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
 
-    // 2️⃣ Restore stock
-    const newInvQty = inventoryData.quantity + item.quantity;
-    tx.update(inventoryRef, { quantity: newInvQty });
-
-    // 2.1️⃣ Restore product global stock
+    // 2️⃣ Fetch product global stock
     const productRef = adminFirestore.collection("products").doc(item.itemId);
     const productSnap = await tx.get(productRef);
-    if (productSnap.exists) {
-      const prodData = productSnap.data() as Product;
-      const newTotalStock = (prodData.totalStock ?? 0) + item.quantity;
-      tx.update(productRef, {
-        totalStock: newTotalStock,
-        inStock: newTotalStock > 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
 
-    // 3️⃣ Delete item from POS cart
+    // 3️⃣ Fetch cart item to delete
     let cartQuery = posCart
       .where("itemId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
@@ -171,8 +164,26 @@ export const removeFromPosCart = async (item: POSCartItem, userId: string) => {
       cartQuery = cartQuery.where("userId", "==", userId);
     }
 
-    const cartSnapshot = await cartQuery.limit(1).get();
+    const cartSnapshot = await tx.get(cartQuery.limit(1));
 
+    // --- ALL READS DONE, START WRITES ---
+
+    // 4️⃣ Restore stock
+    const newInvQty = inventoryData.quantity + item.quantity;
+    tx.update(inventoryRef, { quantity: newInvQty });
+
+    // 5️⃣ Restore product global stock
+    if (productSnap.exists) {
+      const prodData = productSnap.data() as Product;
+      const newTotalStock = (prodData.totalStock ?? 0) + item.quantity;
+      tx.update(productRef, {
+        totalStock: newTotalStock,
+        inStock: newTotalStock > 0,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    // 6️⃣ Delete item from POS cart
     if (!cartSnapshot.empty) {
       tx.delete(cartSnapshot.docs[0].ref);
     }
@@ -261,43 +272,49 @@ export const updatePosCartItemQuantity = async (
 
   await adminFirestore.runTransaction(async (tx) => {
     // 1️⃣ Find the cart item
-    const cartQuery = await posCart
+    const cartQuery = posCart
       .where("itemId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
       .where("size", "==", item.size)
       .where("stockId", "==", item.stockId)
-      .limit(1)
-      .get();
+      .limit(1);
 
-    if (cartQuery.empty) throw new AppError("Cart item not found", 404);
+    const cartDocSnap = await tx.get(cartQuery);
 
-    const cartDoc = cartQuery.docs[0];
+    if (cartDocSnap.empty) throw new AppError("Cart item not found", 404);
+
+    const cartDoc = cartDocSnap.docs[0];
     const currentItem = cartDoc.data() as POSCartItem;
     const quantityDiff = newQuantity - currentItem.quantity;
 
     // 2️⃣ Fetch inventory item
-    const inventoryQuery = await adminFirestore
+    const inventoryQuery = adminFirestore
       .collection("stock_inventory")
       .where("productId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
       .where("size", "==", item.size)
       .where("stockId", "==", item.stockId)
-      .limit(1)
-      .get();
+      .limit(1);
+    
+    const inventorySnap = await tx.get(inventoryQuery);
 
-    if (inventoryQuery.empty)
+    if (inventorySnap.empty)
       throw new AppError("Item not found in inventory", 404);
 
-    const inventoryRef = inventoryQuery.docs[0].ref;
-    const inventoryData = inventoryQuery.docs[0].data() as InventoryItem;
+    const inventoryRef = inventorySnap.docs[0].ref;
+    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
 
-    // 3️⃣ Update inventory (deduct if increasing, restore if decreasing, dont go minus)
+    // 3️⃣ Fetch product global stock
+    const productRef = adminFirestore.collection("products").doc(item.itemId);
+    const productSnap = await tx.get(productRef);
+
+    // --- ALL READS DONE, START WRITES ---
+
+    // 4️⃣ Update inventory (deduct if increasing, restore if decreasing, dont go minus)
     const newInvQty = inventoryData.quantity - quantityDiff;
     tx.update(inventoryRef, { quantity: newInvQty });
 
-    // 3.1️⃣ Update product global stock
-    const productRef = adminFirestore.collection("products").doc(item.itemId);
-    const productSnap = await tx.get(productRef);
+    // 5️⃣ Update product global stock
     if (productSnap.exists) {
       const prodData = productSnap.data() as Product;
       const newTotalStock = (prodData.totalStock ?? 0) - quantityDiff;
@@ -308,7 +325,7 @@ export const updatePosCartItemQuantity = async (
       });
     }
 
-    // 4️⃣ Update cart item quantity
+    // 6️⃣ Update cart item quantity
     tx.update(cartDoc.ref, { quantity: newQuantity });
   });
 };
