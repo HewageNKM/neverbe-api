@@ -456,6 +456,6 @@ export const addWebOrder = async (order: Partial<Order>) => {
 /**
  * Get all orders for a specific user ID
  */
-export const getOrdersByUserId = async (userId: string, limit: number = 20) => {
+export const getOrdersByUserId = async (userId: string, limit: number = 50) => {
   return await orderRepository.findByUserId(userId, limit);
 };
