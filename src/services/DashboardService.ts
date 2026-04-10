@@ -632,10 +632,8 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
 export interface OrderStatusDistribution {
   pending: number;
   processing: number;
-  shipped: number;
   completed: number;
   cancelled: number;
-  refunded: number;
 }
 
 /**
@@ -676,10 +674,8 @@ export const getOrderStatusDistribution =
       const distribution: OrderStatusDistribution = {
         pending: 0,
         processing: 0,
-        shipped: 0,
         completed: 0,
         cancelled: 0,
-        refunded: 0,
       };
 
       snapshot.docs.forEach((doc) => {
@@ -693,17 +689,11 @@ export const getOrderStatusDistribution =
           case "processing":
             distribution.processing++;
             break;
-          case "shipped":
-            distribution.shipped++;
-            break;
           case "completed":
             distribution.completed++;
             break;
           case "cancelled":
             distribution.cancelled++;
-            break;
-          case "refunded":
-            distribution.refunded++;
             break;
           default:
             distribution.pending++;
@@ -726,7 +716,7 @@ export const getOrderStatusDistribution =
  */
 export interface PendingOrdersCount {
   pendingPayment: number;
-  pendingShipment: number;
+  pendingFulfillment: number;
   total: number;
 }
 
@@ -742,21 +732,21 @@ export const getPendingOrdersCount = async (): Promise<PendingOrdersCount> => {
       .collection("orders")
       .where("paymentStatus", "==", "Pending");
 
-    // Pending shipment (paid but not shipped)
-    const pendingShipmentQuery = adminFirestore
+    // Pending fulfillment (paid but not completed)
+    const pendingFulfillmentQuery = adminFirestore
       .collection("orders")
       .where("paymentStatus", "==", "Paid")
       .where("status", "in", ["Pending", "Processing"]);
 
-    const [paymentSnapshot, shipmentSnapshot] = await Promise.all([
+    const [paymentSnapshot, fulfillmentSnapshot] = await Promise.all([
       pendingPaymentQuery.get(),
-      pendingShipmentQuery.get(),
+      pendingFulfillmentQuery.get(),
     ]);
 
     const result = {
       pendingPayment: paymentSnapshot.size,
-      pendingShipment: shipmentSnapshot.size,
-      total: paymentSnapshot.size + shipmentSnapshot.size,
+      pendingFulfillment: fulfillmentSnapshot.size,
+      total: paymentSnapshot.size + fulfillmentSnapshot.size,
     };
 
     console.log("[DashboardService] Pending orders:", result);
