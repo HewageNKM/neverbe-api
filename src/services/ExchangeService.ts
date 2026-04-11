@@ -447,14 +447,15 @@ export const processExchange = async (
     // 2.5 PHASE: Update Order Items
     const updatedOrderItems = [...order.items];
 
+    // Normalized matching helper
+    const matches = (itemA: any, itemB: any) =>
+      String(itemA.itemId).trim() === String(itemB.itemId).trim() &&
+      String(itemA.variantId).trim() === String(itemB.variantId).trim() &&
+      String(itemA.size).trim() === String(itemB.size).trim();
+
     // Process Returns: Decrease quantity or remove
     for (const ret of returnedItems) {
-      const idx = updatedOrderItems.findIndex(
-        (i) =>
-          i.itemId === ret.itemId &&
-          i.variantId === ret.variantId &&
-          i.size === ret.size,
-      );
+      const idx = updatedOrderItems.findIndex((i) => matches(i, ret));
       if (idx !== -1) {
         updatedOrderItems[idx].quantity -= ret.quantity;
         if (updatedOrderItems[idx].quantity <= 0) {
@@ -465,12 +466,7 @@ export const processExchange = async (
 
     // Process Replacements: Add or increase quantity
     for (const rep of replacementItems) {
-      const idx = updatedOrderItems.findIndex(
-        (i) =>
-          i.itemId === rep.itemId &&
-          i.variantId === rep.variantId &&
-          i.size === rep.size,
-      );
+      const idx = updatedOrderItems.findIndex((i) => matches(i, rep));
       if (idx !== -1) {
         updatedOrderItems[idx].quantity += rep.quantity;
       } else {
