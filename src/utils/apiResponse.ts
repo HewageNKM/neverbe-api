@@ -79,3 +79,19 @@ export class AppError extends Error {
     Object.setPrototypeOf(this, AppError.prototype);
   }
 }
+
+/**
+ * Unified API Response Helper
+ * delegates to successResponse or errorResponse based on status code
+ */
+export const apiResponse = (
+  data: any,
+  message: string = "Success",
+  status: number = 200,
+) => {
+  if (status >= 400) {
+    return errorResponse(message || "Error", status);
+  }
+  return successResponse(data, message, status);
+};
+

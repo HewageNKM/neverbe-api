@@ -14,10 +14,6 @@ import {
 } from "./NotificationService";
 
 import { toSafeLocaleString } from "./UtilService";
-import {
-  sendOrderStatusUpdateEmail,
-  sendOrderStatusUpdateSMS,
-} from "./NotificationService";
 
 const ORDERS_COLLECTION = "orders";
 
@@ -216,7 +212,7 @@ export const updateOrder = async (order: Order & { sendNotification?: boolean },
     const newStatus = order.status?.toUpperCase();
 
     if (newStatus && oldStatus !== newStatus) {
-      const triggerStatuses = [\"PROCESSING\", \"COMPLETED\", \"CANCELLED\"];
+      const triggerStatuses = ["PROCESSING", "COMPLETED", "CANCELLED"];
       if (triggerStatuses.includes(newStatus)) {
         console.log(`[Order Service] Triggering automated notification for ${orderId} (${newStatus})`);
         
