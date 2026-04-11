@@ -1,5 +1,6 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import admin from "firebase-admin";
+import { Filter } from "firebase-admin/firestore";
 import { ExchangeRecord, ExchangeRequest } from "@/model/ExchangeRecord";
 import { Order } from "@/model/Order";
 import { AppError } from "@/utils/apiResponse";
@@ -609,13 +610,20 @@ export const getExchangeById = async (
 export const getExchangesByOrderId = async (
   orderId: string,
 ): Promise<ExchangeRecord[]> => {
+  const cleanId = orderId?.trim();
+  if (!cleanId) return [];
+
   const snapshot = await adminFirestore
     .collection(EXCHANGES_COLLECTION)
-    .where("originalOrderId", "==", orderId)
-    .orderBy("createdAt", "desc")
+    .where(
+      Filter.or(
+        Filter.where("originalOrderId", "==", cleanId),
+        Filter.where("originalOrderDocId", "==", cleanId),
+      ),
+    )
     .get();
 
-  return snapshot.docs.map((doc) => {
+  const exchanges = snapshot.docs.map((doc) => {
     const data = doc.data() as ExchangeRecord;
     return {
       ...data,
@@ -629,6 +637,13 @@ export const getExchangesByOrderId = async (
           : data.updatedAt,
     };
   });
+
+  // Sort in-memory to avoid mandatory composite index
+  return exchanges.sort(
+    (a, b) =>
+      new Date(b.createdAt as string).getTime() -
+      new Date(a.createdAt as string).getTime(),
+  );
 };
 
 /**
