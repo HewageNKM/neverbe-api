@@ -7,9 +7,11 @@ import { getOrderByIdForInvoice } from "./WebOrderService";
 import { verifyCaptchaToken } from "./CapchaService";
 
 const OTP_COLLECTION = "otp_verifications";
+const ORDERS_COLLECTION = "orders";
 const OTP_EXPIRY_MINUTES = 5;
 export const NOTIFICATION_TRACKER = "notifications_sent";
 const OTP_TTL_DAYS = 1;
+const SMS_TEMPLATES_COLLECTION = "sms_templates";
 const COOLDOWN_SECONDS = 60;
 const MAIL_COLLECTION = "mail";
 
@@ -255,6 +257,43 @@ export const consumeOTPVerification = async (phone: string): Promise<void> => {
   }
 };
 
+/** Process basic template variables */
+const processTemplate = (content: string, data: Record<string, any>) => {
+  let processed = content;
+  Object.keys(data).forEach(key => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    processed = processed.replace(regex, data[key] || '');
+  });
+  return processed;
+};
+
+/** Get and Render Multilingual SMS Template */
+export const renderMultilingualSMS = async (templateId: string, data: Record<string, any>) => {
+  try {
+    const doc = await adminFirestore.collection(SMS_TEMPLATES_COLLECTION).doc(templateId).get();
+    if (!doc.exists) {
+      console.warn(`[Notification Service] Template ${templateId} not found. Falling back to simple EN.`);
+      // Simple fallback if no template exists yet
+      if (templateId === "ORDER_CONFIRMED") return `NEVERBE: Order #${data.orderId?.toUpperCase()} confirmed.`;
+      if (templateId === "STATUS_COMPLETED") return `NEVERBE: Order #${data.orderId?.toUpperCase()} shipped.`;
+      return `NEVERBE: Update for order #${data.orderId?.toUpperCase()}.`;
+    }
+
+    const template = doc.data() as any;
+    
+    // Concatenate EN, SI, TA versions
+    const parts = [];
+    if (template.en) parts.push(processTemplate(template.en, data));
+    if (template.si) parts.push(processTemplate(template.si, data));
+    if (template.ta) parts.push(processTemplate(template.ta, data));
+
+    return parts.join("\n\n");
+  } catch (error) {
+    console.error(`[Notification Service] Template rendering failed for ${templateId}:`, error);
+    return `NEVERBE: Update for Order #${data.orderId?.toUpperCase()}`; // Ultimate fallback
+  }
+};
+
 /** Send Predefined Order Confirmation SMS (Prevents duplicates using hash) */
 export const sendOrderConfirmedSMS = async (orderId: string) => {
   try {
@@ -278,7 +317,7 @@ export const sendOrderConfirmedSMS = async (orderId: string) => {
 
     const phone = order.customer.phone.trim();
     const customerName = order.customer.name.split(" ")[0];
-    const text = `NEVERBE: Got it, ${customerName}. Order #${orderId.toUpperCase()} is confirmed.`;
+    const text = await renderMultilingualSMS("ORDER_CONFIRMED", { customerName, orderId });
     const hashValue = generateHash(phone + text);
 
     const existing = await adminFirestore
@@ -348,7 +387,7 @@ export const sendeBillSMS = async (orderId: string, phone: string) => {
 
     const cleanPhone = phone.trim();
     const ebillUrl = `https://neverbe.lk/ebill/${orderId}`;
-    const text = `NEVERBE: Thank you for your purchase! View & download your eBill here: ${ebillUrl}`;
+    const text = await renderMultilingualSMS("EBILL_SENT", { ebillUrl, orderId });
     
     // We can use a hash to prevent sending the exact same eBill SMS to the same phone within a short time.
     const hashValue = generateHash(cleanPhone + "EBILL" + orderId);
@@ -643,11 +682,11 @@ export const sendOrderStatusUpdateSMS = async (orderId: string, status: string) 
     const s = status.toUpperCase();
     if (s === "COMPLETED") {
       const trackingInfo = order.trackingNumber ? ` Track your package: ${order.trackingNumber}${order.courier ? ` via ${order.courier}` : ""}` : "";
-      text = `NEVERBE: Great news ${name}! Your order #${orderId.toUpperCase()} is completed & shipped.${trackingInfo} Thank you for shopping with us!`;
+      text = await renderMultilingualSMS("STATUS_COMPLETED", { name, orderId, trackingInfo });
     } else if (s === "CANCELLED") {
-      text = `NEVERBE: Hi ${name}, your order #${orderId.toUpperCase()} has been cancelled. Please contact us if you have any questions.`;
+      text = await renderMultilingualSMS("STATUS_CANCELLED", { name, orderId });
     } else {
-      text = `NEVERBE: Hi ${name}, your order #${orderId.toUpperCase()} status has been updated to ${status}.`;
+      text = await renderMultilingualSMS("STATUS_UPDATE", { name, orderId, status });
     }
 
     const hashValue = generateHash(phone + text + "STATUS_UPDATE");
@@ -806,6 +845,25 @@ export const getNotificationLogs = async (orderId: string) => {
     }));
   } catch (error) {
     console.error(`[Notification Service] Error fetching logs for ${orderId}:`, error);
+    return [];
+  }
+};
+
+/** Get all customer communication history */
+export const getAllNotificationLogs = async (limit: number = 50) => {
+  try {
+    const snapshot = await adminFirestore
+      .collection(NOTIFICATION_TRACKER)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error(`[Notification Service] Error fetching all logs:`, error);
     return [];
   }
 };
