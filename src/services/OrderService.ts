@@ -10,6 +10,10 @@ import { AppError } from "@/utils/apiResponse";
 import { searchOrders } from "./AlgoliaService";
 
 import { toSafeLocaleString } from "./UtilService";
+import {
+  sendOrderStatusUpdateEmail,
+  sendOrderStatusUpdateSMS,
+} from "./NotificationService";
 
 const ORDERS_COLLECTION = "orders";
 
@@ -193,6 +197,24 @@ export const updateOrder = async (order: Order, orderId: string) => {
 
     // 🔒 Update or add hash ledger entry
     await updateOrAddOrderHash(updatedOrderData);
+
+    // 🔔 Automated Customer Notifications
+    // Only trigger if status changed and it's one of the notification statuses
+    const oldStatus = existingOrder.status?.toUpperCase();
+    const newStatus = order.status?.toUpperCase();
+
+    if (newStatus && oldStatus !== newStatus) {
+      const triggerStatuses = [\"PROCESSING\", \"COMPLETED\", \"CANCELLED\"];
+      if (triggerStatuses.includes(newStatus)) {
+        console.log(`[Order Service] Triggering automated notification for ${orderId} (${newStatus})`);
+        
+        // Fire and forget or await? Usually better to await for robustness, or use promise.all
+        Promise.all([
+          sendOrderStatusUpdateSMS(orderId, newStatus),
+          sendOrderStatusUpdateEmail(orderId, newStatus)
+        ]).catch(err => console.error(`[Order Service] Notification firing failed for ${orderId}:`, err));
+      }
+    }
 
     console.log(`✅ Order with ID ${orderId} updated and hashed successfully`);
   } catch (error) {

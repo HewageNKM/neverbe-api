@@ -622,3 +622,175 @@ export const subscribeToAdminAlerts = async (token: string) => {
     return false;
   }
 };
+
+/** 
+ * --- CUSTOMER STATUS NOTIFICATIONS ---
+ */
+
+/** Send Order Status Update SMS */
+export const sendOrderStatusUpdateSMS = async (orderId: string, status: string) => {
+  try {
+    const TEXT_API_KEY = process.env.TEXT_API_KEY;
+    if (!TEXT_API_KEY) return false;
+
+    const order: Order = await getOrderByIdForInvoice(orderId);
+    if (!order?.customer?.phone) return false;
+
+    const phone = order.customer.phone.trim();
+    const name = order.customer.name.split(" ")[0];
+    let text = "";
+
+    const s = status.toUpperCase();
+    if (s === "PROCESSING") {
+      text = `NEVERBE: Hi ${name}, your order #${orderId.toUpperCase()} is now being processed. We'll notify you once it's shipped!`;
+    } else if (s === "COMPLETED") {
+      text = `NEVERBE: Great news ${name}! Your order #${orderId.toUpperCase()} is completed. Thank you for shopping with us!`;
+    } else if (s === "CANCELLED") {
+      text = `NEVERBE: Hi ${name}, your order #${orderId.toUpperCase()} has been cancelled. Please contact us if you have any questions.`;
+    } else {
+      text = `NEVERBE: Hi ${name}, your order #${orderId.toUpperCase()} status has been updated to ${status}.`;
+    }
+
+    const hashValue = generateHash(phone + text + "STATUS_UPDATE");
+
+    // Prevent duplicates
+    const existing = await adminFirestore
+      .collection(NOTIFICATION_TRACKER)
+      .where("orderId", "==", orderId)
+      .where("hashValue", "==", hashValue)
+      .get();
+    if (!existing.empty) return false;
+
+    await fetch("https://api.textit.biz/", {
+      method: "POST",
+      headers: { Authorization: `Basic ${TEXT_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: phone, text }),
+    });
+
+    await adminFirestore.collection(NOTIFICATION_TRACKER).add({
+      orderId,
+      type: "sms_status",
+      to: phone,
+      content: text,
+      status: s,
+      hashValue,
+      createdAt: new Date(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error(`[Notification Service] Status SMS failed for ${orderId}:`, error);
+    return false;
+  }
+};
+
+/** Send Order Status Update Email */
+export const sendOrderStatusUpdateEmail = async (orderId: string, status: string) => {
+  try {
+    const order: Order = await getOrderByIdForInvoice(orderId);
+    const email = order?.customer?.email?.trim();
+    if (!email) return false;
+
+    const name = order.customer.name || "Customer";
+    const s = status.toUpperCase();
+    
+    let subject = `Order Update: #${orderId.toUpperCase()}`;
+    let message = `Your order status has been updated.`;
+
+    if (s === "PROCESSING") {
+      subject = `Processing Your Order: #${orderId.toUpperCase()}`;
+      message = `We are now processing your order. You will receive another update when it ships.`;
+    } else if (s === "COMPLETED") {
+      subject = `Order Completed: #${orderId.toUpperCase()}`;
+      message = `Your order is now complete. Thank you for choosing NEVERBE!`;
+    } else if (s === "CANCELLED") {
+      subject = `Order Cancelled: #${orderId.toUpperCase()}`;
+      message = `Your order has been cancelled. If this was a mistake, please reach out to us.`;
+    }
+
+    const emailPayload = {
+      to: [email],
+      message: {
+        subject: subject,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #16a34a;">Order Update</h2>
+            <p>Hi ${name},</p>
+            <p>${message}</p>
+            <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+              <strong>Order ID:</strong> ${orderId.toUpperCase()}<br/>
+              <strong>Current Status:</strong> ${s}
+            </div>
+            <p style="margin-top: 20px; font-size: 12px; color: #999;">
+              This is an automated notification from NEVERBE.
+            </p>
+          </div>
+        `,
+      },
+    };
+
+    await adminFirestore.collection(MAIL_COLLECTION).add(emailPayload);
+    await adminFirestore.collection(NOTIFICATION_TRACKER).add({
+      orderId,
+      type: "email_status",
+      to: email,
+      status: s,
+      createdAt: new Date(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error(`[Notification Service] Status Email failed for ${orderId}:`, error);
+    return false;
+  }
+};
+
+/** Send Manual Customer Notification (SMS or Email) */
+export const sendManualNotification = async (
+  orderId: string,
+  type: "sms" | "email",
+  content: string,
+  subject?: string
+) => {
+  try {
+    const order: Order = await getOrderByIdForInvoice(orderId);
+    if (!order) return false;
+
+    if (type === "sms") {
+      const TEXT_API_KEY = process.env.TEXT_API_KEY;
+      const phone = order.customer?.phone?.trim();
+      if (!TEXT_API_KEY || !phone) return false;
+
+      await fetch("https://api.textit.biz/", {
+        method: "POST",
+        headers: { Authorization: `Basic ${TEXT_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to: phone, text: content }),
+      });
+    } else {
+      const email = order.customer?.email?.trim();
+      if (!email) return false;
+
+      await adminFirestore.collection(MAIL_COLLECTION).add({
+        to: [email],
+        message: {
+          subject: subject || `Update regarding your order #${orderId.toUpperCase()}`,
+          html: `<div style="font-family: sans-serif; padding: 20px;">${content.replace(/\n/g, '<br/>')}</div>`,
+        },
+      });
+    }
+
+    await adminFirestore.collection(NOTIFICATION_TRACKER).add({
+      orderId,
+      type: `manual_${type}`,
+      to: type === "sms" ? order.customer?.phone : order.customer?.email,
+      content,
+      createdAt: new Date(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error(`[Notification Service] Manual ${type} failed for ${orderId}:`, error);
+    return false;
+  }
+};
+
