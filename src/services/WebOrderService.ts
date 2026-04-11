@@ -381,16 +381,10 @@ export const addWebOrder = async (order: Partial<Order>) => {
             if (!prodData)
               throw new AppError(`Product not found: ${item.itemId}`, 404);
             const newInvQty = (invData.quantity ?? 0) - item.quantity;
-            const newTotalStock = (prodData.totalStock ?? 0) - item.quantity;
-            if (newInvQty < 0 || newTotalStock < 0)
+            if (newInvQty < 0)
               throw new AppError(`Insufficient stock for ${item.name}`, 400);
-
+            
             tx.update(invDoc.ref, { quantity: newInvQty });
-            tx.update(adminFirestore.collection("products").doc(item.itemId), {
-              totalStock: newTotalStock,
-              inStock: newTotalStock > 0,
-              updatedAt: now,
-            });
           }
 
           tx.set(orderRef, {

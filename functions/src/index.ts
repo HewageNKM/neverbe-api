@@ -14,6 +14,7 @@ admin.initializeApp();
 
 export * from "./jobs/cleanupFailedOrders";
 export * from "./jobs/trainAIModels";
+export * from "./triggers/inventorySync";
 
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript

@@ -500,21 +500,6 @@ export const processExchange = async (
     .doc(exchangeId)
     .get();
 
-  // 7. Post-transaction: Update denormalized stock counts (fire and forget or await)
-  try {
-    const affectedProductIds = new Set<string>();
-    returnedItems.forEach((item) => affectedProductIds.add(item.itemId));
-    replacementItems.forEach((item) => affectedProductIds.add(item.itemId));
-
-    await Promise.all(
-      Array.from(affectedProductIds).map((pid) => updateProductStockCount(pid)),
-    );
-  } catch (error) {
-    console.error(
-      "Failed to update product stock counts after exchange:",
-      error,
-    );
-    // Suppress error as the critical transaction succeeded
   }
 
   return exchangeDoc.data() as ExchangeRecord;

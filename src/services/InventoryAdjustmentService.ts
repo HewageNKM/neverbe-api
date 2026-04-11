@@ -308,11 +308,6 @@ const updateInventoryFromAdjustment = async (
     }
   }
 
-  // Recalculate global stock for all affected products
-  const { updateProductStockCount } = await import("./InventoryService");
-  for (const productId of Object.keys(productUpdates)) {
-    await updateProductStockCount(productId);
-  }
 
   await batch.commit();
 };

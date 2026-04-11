@@ -90,35 +90,11 @@ export const addItemToPosCart = async (item: POSCartItem, userId: string) => {
     const inventoryRef = inventorySnap.docs[0].ref;
     const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
 
-    // 2️⃣ Fetch product global stock
-    const productRef = adminFirestore.collection("products").doc(item.itemId);
-    const productSnap = await tx.get(productRef);
-
-    // --- ALL READS DONE, START WRITES ---
-
-    // 3️⃣ Check if requested quantity is bigger than available
-    if (item.quantity > inventoryData.quantity) {
-      console.warn(
-        `Warning: Requested quantity (${item.quantity}) is greater than available stock (${inventoryData.quantity}) for productId: ${item.itemId}, size: ${item.size}, stockId: ${item.stockId}`,
-      );
-    }
-
-    // 4️⃣ Deduct stock (dont go minus)
+    // 3️⃣ Deduct stock (real stock allowed to go negative for POS)
     const newInvQty = inventoryData.quantity - item.quantity;
     tx.update(inventoryRef, { quantity: newInvQty });
 
-    // 5️⃣ Update product global stock
-    if (productSnap.exists) {
-      const prodData = productSnap.data() as Product;
-      const newTotalStock = (prodData.totalStock ?? 0) - item.quantity;
-      tx.update(productRef, {
-        totalStock: newTotalStock,
-        inStock: newTotalStock > 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // 6️⃣ Add to POS cart
+    // 4️⃣ Add to POS cart
     tx.set(posCart.doc(), {
       ...item,
       userId: userId || "anonymous",
@@ -149,24 +125,14 @@ export const removeFromPosCart = async (item: POSCartItem, userId: string) => {
     const inventoryRef = inventorySnap.docs[0].ref;
     const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
 
-    // 2️⃣ Fetch product global stock
-    const productRef = adminFirestore.collection("products").doc(item.itemId);
-    const productSnap = await tx.get(productRef);
-
-    // 3️⃣ Fetch cart item to delete
-    let cartQuery = posCart
+    const cartQuery = posCart
       .where("itemId", "==", item.itemId)
       .where("variantId", "==", item.variantId)
       .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId);
-
-    if (userId) {
-      cartQuery = cartQuery.where("userId", "==", userId);
-    }
+      .where("stockId", "==", item.stockId)
+      .where("userId", "==", userId);
 
     const cartSnapshot = await tx.get(cartQuery.limit(1));
-
-    // --- ALL READS DONE, START WRITES ---
 
     if (cartSnapshot.empty) {
       throw new AppError("Cart item not found", 404);
@@ -178,18 +144,7 @@ export const removeFromPosCart = async (item: POSCartItem, userId: string) => {
     const newInvQty = inventoryData.quantity + cartItemData.quantity;
     tx.update(inventoryRef, { quantity: newInvQty });
 
-    // 5️⃣ Restore product global stock
-    if (productSnap.exists) {
-      const prodData = productSnap.data() as Product;
-      const newTotalStock = (prodData.totalStock ?? 0) + cartItemData.quantity;
-      tx.update(productRef, {
-        totalStock: newTotalStock,
-        inStock: newTotalStock > 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // 6️⃣ Delete item from POS cart
+    // 5️⃣ Delete item from POS cart
     tx.delete(cartSnapshot.docs[0].ref);
   });
 };
@@ -210,51 +165,33 @@ export const clearPosCart = async (
     if (snap.empty) return;
 
     const batch = adminFirestore.batch();
-    const items = snap.docs.map((d) => d.data() as POSCartItem);
+    const items = snap.docs.map((d) => ({ ref: d.ref, data: d.data() as POSCartItem }));
 
     if (restock) {
-      // Group items by product for more efficient product updates
-      const productUpdates = new Map<string, number>();
+      for (const item of items) {
+        // Find inventory item
+        const invQuery = await adminFirestore
+          .collection("stock_inventory")
+          .where("productId", "==", item.data.itemId)
+          .where("variantId", "==", item.data.variantId)
+          .where("size", "==", item.data.size)
+          .where("stockId", "==", item.data.stockId)
+          .limit(1)
+          .get();
 
-      await Promise.all(
-        items.map(async (item) => {
-          // 1️⃣ Find inventory item
-          const invQuery = await adminFirestore
-            .collection("stock_inventory")
-            .where("productId", "==", item.itemId)
-            .where("variantId", "==", item.variantId)
-            .where("size", "==", item.size)
-            .where("stockId", "==", item.stockId)
-            .limit(1)
-            .get();
-
-          if (!invQuery.empty) {
-            const invRef = invQuery.docs[0].ref;
-            const invData = invQuery.docs[0].data();
-            batch.update(invRef, {
-              quantity: (invData.quantity || 0) + item.quantity,
-            });
-          }
-
-          // Accumulate quantity to restore to global product stock
-          const currentTotal = productUpdates.get(item.itemId) || 0;
-          productUpdates.set(item.itemId, currentTotal + item.quantity);
-        }),
-      );
-
-      // 2️⃣ Update global product stocks
-      for (const [productId, quantity] of productUpdates.entries()) {
-        const productRef = adminFirestore.collection("products").doc(productId);
-        batch.update(productRef, {
-          totalStock: FieldValue.increment(quantity),
-          inStock: true,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+        if (!invQuery.empty) {
+          const invRef = invQuery.docs[0].ref;
+          const invData = invQuery.docs[0].data();
+          batch.update(invRef, {
+            quantity: (invData.quantity || 0) + item.data.quantity,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
       }
     }
 
-    // 3️⃣ Delete from cart
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    // Batch delete items
+    items.forEach((item) => batch.delete(item.ref));
 
     await batch.commit();
     console.log(

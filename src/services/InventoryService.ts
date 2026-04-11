@@ -210,8 +210,7 @@ export const addInventory = async (
       .set(newItem);
     console.log(`Added new inventory item ${docId}`);
 
-    // After adding, update the product's denormalized stock count
-    await updateProductStockCount(productId);
+    console.log(`Added new inventory item ${docId}`);
 
     return { id: docId, ...itemData, quantity: Number(quantity) };
   }
@@ -247,9 +246,6 @@ export const updateInventoryQuantity = async (
       quantity: Number(newQuantity), // Ensure number
       updatedAt: FieldValue.serverTimestamp(),
     });
-
-    // After updating, trigger product stock count update
-    await updateProductStockCount(currentItem.productId); // Update product based on productId
 
     return { ...currentItem, id: inventoryId, quantity: Number(newQuantity) };
   } catch (error) {
@@ -406,11 +402,6 @@ export const addBulkInventory = async (
       results.failed++;
       results.errors.push(`Size ${size}: ${error.message}`);
     }
-  }
-
-  // Update product stock count once after all entries are processed
-  if (results.success > 0) {
-    await updateProductStockCount(productId);
   }
 
   return results;

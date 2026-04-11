@@ -203,16 +203,6 @@ const updateInventoryFromGRN = async (items: GRNItem[]): Promise<void> => {
     productUpdates[item.productId] = current + item.receivedQuantity;
   }
 
-  // Batch update products totalStock
-  for (const [productId, change] of Object.entries(productUpdates)) {
-    const productRef = adminFirestore.collection("products").doc(productId);
-    batch.update(productRef, {
-      totalStock: FieldValue.increment(change),
-      inStock: true, // Since we are adding stock
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  }
-
   await batch.commit();
   console.log(
     `[GRNService] Updated inventory and product totals for ${items.length} items`,
