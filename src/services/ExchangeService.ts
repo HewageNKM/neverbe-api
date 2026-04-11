@@ -7,8 +7,8 @@ import { nanoid } from "nanoid";
 import {
   findExistingInventoryItem,
   getInventoryQuantity,
-  updateProductStockCount,
 } from "./InventoryService";
+import { updateOrAddOrderHash } from "./IntegrityService";
 
 const EXCHANGES_COLLECTION = "exchanges";
 const ORDERS_COLLECTION = "orders";
@@ -203,7 +203,7 @@ export const processExchange = async (
     if (returnItem.quantity + alreadyReturned > originalItem.quantity) {
       throw new AppError(
         `Cannot return ${returnItem.quantity} of ${returnItem.name} (${returnItem.size}). ` +
-          `Previously returned: ${alreadyReturned}. Original quantity: ${originalItem.quantity}.`,
+        `Previously returned: ${alreadyReturned}. Original quantity: ${originalItem.quantity}.`,
         400,
       );
     }
@@ -443,6 +443,54 @@ export const processExchange = async (
       }
     }
 
+    // 2.5 PHASE: Update Order Items
+    const updatedOrderItems = [...order.items];
+
+    // Process Returns: Decrease quantity or remove
+    for (const ret of returnedItems) {
+      const idx = updatedOrderItems.findIndex(
+        (i) =>
+          i.itemId === ret.itemId &&
+          i.variantId === ret.variantId &&
+          i.size === ret.size,
+      );
+      if (idx !== -1) {
+        updatedOrderItems[idx].quantity -= ret.quantity;
+        if (updatedOrderItems[idx].quantity <= 0) {
+          updatedOrderItems.splice(idx, 1);
+        }
+      }
+    }
+
+    // Process Replacements: Add or increase quantity
+    for (const rep of replacementItems) {
+      const idx = updatedOrderItems.findIndex(
+        (i) =>
+          i.itemId === rep.itemId &&
+          i.variantId === rep.variantId &&
+          i.size === rep.size,
+      );
+      if (idx !== -1) {
+        updatedOrderItems[idx].quantity += rep.quantity;
+      } else {
+        // Enriched item has all details needed
+        updatedOrderItems.push({
+          itemId: rep.itemId,
+          variantId: rep.variantId,
+          name: rep.name,
+          variantName: rep.variantName,
+          size: rep.size,
+          quantity: rep.quantity,
+          price: rep.price,
+          discount: rep.discount || 0,
+          itemType: "PRODUCT",
+          bPrice: rep.bPrice || 0,
+        });
+      }
+    }
+
+    const newOrderTotal = (order.total || 0) + priceDifference;
+
     // Create exchange record object
     const exchangeRecord: ExchangeRecord = {
       id: exchangeId,
@@ -488,11 +536,30 @@ export const processExchange = async (
     transaction.update(
       adminFirestore.collection(ORDERS_COLLECTION).doc(order.docId),
       {
+        items: updatedOrderItems,
+        total: newOrderTotal,
         exchangeIds: admin.firestore.FieldValue.arrayUnion(exchangeId),
         updatedAt: admin.firestore.Timestamp.now(),
       },
     );
   });
+
+  // 5. Post-transaction updates (Integrity & History)
+  try {
+    const updatedOrderSnap = await adminFirestore
+      .collection(ORDERS_COLLECTION)
+      .doc(order.docId)
+      .get();
+    const updatedOrderData = updatedOrderSnap.data();
+    if (updatedOrderData) {
+      await updateOrAddOrderHash({
+        ...updatedOrderData,
+        orderId: order.orderId,
+      });
+    }
+  } catch (err) {
+    console.error("Failed to update order hash after exchange:", err);
+  }
 
   // 6. Return the created exchange record
   const exchangeDoc = await adminFirestore
@@ -500,9 +567,9 @@ export const processExchange = async (
     .doc(exchangeId)
     .get();
 
-  }
+}
 
-  return exchangeDoc.data() as ExchangeRecord;
+return exchangeDoc.data() as ExchangeRecord;
 };
 
 // ================================
