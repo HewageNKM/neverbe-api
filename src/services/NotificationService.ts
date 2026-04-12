@@ -874,13 +874,10 @@ export const getAllNotificationLogs = async (page: number = 1, pageSize: number 
   try {
     let query: any = adminFirestore.collection(NOTIFICATION_TRACKER);
 
-    // 1. Apply Search Filter (Simple Order ID or Recipient match)
+    // 1. Apply Search Filter
     if (search) {
-      // Note: Firestore is limited for full-text search. We'll do a simple equality check for Order ID first.
-      // If it looks like a phone number or email, we query that field.
       const isEmail = search.includes("@");
       const isPhone = /^\+?\d+$/.test(search);
-
       if (isEmail || isPhone) {
         query = query.where("to", "==", search.trim());
       } else {
@@ -888,12 +885,13 @@ export const getAllNotificationLogs = async (page: number = 1, pageSize: number 
       }
     }
 
-    // 2. Apply Sort (Required for offset/limit)
+    // 2. Base Query with Sort (Required for pagination)
     const sortedQuery = query.orderBy("createdAt", "desc");
     
-    // 3. Get total count for this specific query
+    // 3. Get total count for this SPECIFIC query
     const countSnapshot = await sortedQuery.count().get();
     const total = countSnapshot.data().count;
+    console.log(`[Notification Service] Total logs for query: ${total} (Page ${page}, Size ${pageSize}, Search '${search || ""}')`);
 
     // 4. Fetch paginated data
     const snapshot = await sortedQuery
@@ -903,10 +901,15 @@ export const getAllNotificationLogs = async (page: number = 1, pageSize: number 
 
     const logs = snapshot.docs.map(doc => {
       const data = doc.data();
+      // Return raw numeric timestamp (ms)
+      let timestamp = data.createdAt;
+      if (timestamp?.toDate) timestamp = timestamp.toDate().getTime();
+      else if (timestamp?.seconds) timestamp = timestamp.seconds * 1000;
+
       return {
         id: doc.id,
         ...data,
-        createdAt: toSafeLocaleString(data.createdAt || "")
+        createdAt: timestamp
       };
     });
 

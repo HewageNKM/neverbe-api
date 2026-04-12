@@ -13,7 +13,10 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(url.searchParams.get("pageSize") || "20", 10);
+    // Support both 'pageSize' and 'limit'
+    const limitParam = url.searchParams.get("limit");
+    const pageSizeParam = url.searchParams.get("pageSize");
+    const pageSize = parseInt(pageSizeParam || limitParam || "20", 10);
     const search = url.searchParams.get("search") || "";
 
     const { logs, total } = await getAllNotificationLogs(page, pageSize, search);
