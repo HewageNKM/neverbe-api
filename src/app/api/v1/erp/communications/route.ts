@@ -14,8 +14,9 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const pageSize = parseInt(url.searchParams.get("pageSize") || "20", 10);
+    const search = url.searchParams.get("search") || "";
 
-    const { logs, total } = await getAllNotificationLogs(page, pageSize);
+    const { logs, total } = await getAllNotificationLogs(page, pageSize, search);
 
     return NextResponse.json({ success: true, data: logs, total });
   } catch (error) {

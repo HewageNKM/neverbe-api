@@ -869,18 +869,34 @@ export const getNotificationLogs = async (orderId: string) => {
   }
 };
 
-/** Get all customer communication history with pagination */
-export const getAllNotificationLogs = async (page: number = 1, pageSize: number = 20) => {
+/** Get all customer communication history with pagination and search */
+export const getAllNotificationLogs = async (page: number = 1, pageSize: number = 20, search?: string) => {
   try {
-    const trackerRef = adminFirestore.collection(NOTIFICATION_TRACKER);
+    let query: any = adminFirestore.collection(NOTIFICATION_TRACKER);
+
+    // 1. Apply Search Filter (Simple Order ID or Recipient match)
+    if (search) {
+      // Note: Firestore is limited for full-text search. We'll do a simple equality check for Order ID first.
+      // If it looks like a phone number or email, we query that field.
+      const isEmail = search.includes("@");
+      const isPhone = /^\+?\d+$/.test(search);
+
+      if (isEmail || isPhone) {
+        query = query.where("to", "==", search.trim());
+      } else {
+        query = query.where("orderId", "==", search.trim().toUpperCase());
+      }
+    }
+
+    // 2. Apply Sort (Required for offset/limit)
+    const sortedQuery = query.orderBy("createdAt", "desc");
     
-    // 1. Get total count for pagination
-    const countSnapshot = await trackerRef.count().get();
+    // 3. Get total count for this specific query
+    const countSnapshot = await sortedQuery.count().get();
     const total = countSnapshot.data().count;
 
-    // 2. Fetch paginated data
-    const snapshot = await trackerRef
-      .orderBy("createdAt", "desc")
+    // 4. Fetch paginated data
+    const snapshot = await sortedQuery
       .offset((page - 1) * pageSize)
       .limit(pageSize)
       .get();
