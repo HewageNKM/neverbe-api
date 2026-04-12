@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import { getGenAI, getProModel } from "./AIService";
+import { getGenAI } from "./AIService";
 import { generateSalesForecast } from "./TFService";
 import {
   getDailySnapshot,
@@ -81,51 +81,15 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       getNeuralRawContext()
     ]);
 
-    // 3. Neural Projection (Future) — Using Gemini 2.5 Pro for enhanced accuracy
+    // 3. Neural Projection (Future) — TF.js ML Engine (no API dependency)
     const tfResult = await generateSalesForecast(config.forecastWindow || 14, historical);
 
-    // 3a. AI-Enhanced Forecast Refinement (Gemini 2.5 Pro)
-    let aiForecastRefinement: any = null;
-    if ((tfResult as any).success) {
-      try {
-        const forecastData = (tfResult as any).predictions?.filter((p: any) => p.isForecast) || [];
-        const recentHistorical = historical.slice(-30);
-        const proModel = getProModel("You are a sales forecasting AI. Analyze historical data and TF.js predictions. Return ONLY a JSON object with: {adjustedPredictions: [{date, netSales}], confidence: number 0-100, monthlyTotal: number}. No markdown.");
-        
-        // Check cache for recent Pro model forecast
-        const proCacheDoc = await admin.firestore().collection("ai_response_cache").doc("forecast_pro").get();
-        const proCacheAge = proCacheDoc.exists ? (Date.now() - (proCacheDoc.data()?.updatedAt?.toDate()?.getTime() || 0)) / (1000 * 60 * 60) : 999;
-        
-        if (proCacheAge < 6 && proCacheDoc.data()?.data) {
-          console.log("[NeuralCore] Using cached Pro model forecast (within 6h window).");
-          aiForecastRefinement = proCacheDoc.data()?.data;
-        } else {
-          const prompt = `Historical 30-day sales: ${JSON.stringify(recentHistorical.map(h => ({date: h.date, sales: Math.round(h.netSales)})))}
-TF.js ${config.forecastWindow || 14}-day forecast: ${JSON.stringify(forecastData.map((f: any) => ({date: f.date, sales: Math.round(f.netSales)})))}
-Refine the forecast considering trends, day-of-week patterns, and seasonal factors.`;
-          
-          const result = await proModel.generateContent(prompt);
-          const text = result.response.text().replace(/```json\n?|```\n?/g, '').trim();
-          aiForecastRefinement = JSON.parse(text);
-          
-          // Cache the Pro model response
-          await admin.firestore().collection("ai_response_cache").doc("forecast_pro").set({
-            data: aiForecastRefinement,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`[NeuralCore] Pro model forecast refinement completed. Confidence: ${aiForecastRefinement.confidence}%`);
-        }
-      } catch (err: any) {
-        console.warn("[NeuralCore] Pro model refinement failed, using TF.js baseline.", err.message);
-      }
-    }
-
-    // 3b. Persist Forecast Snapshot for Real vs AI comparison
+    // 3a. Persist Forecast Snapshot for Real vs ML comparison
     const today = new Date().toISOString().split('T')[0];
     const forecastOnly = (tfResult as any).success 
       ? (tfResult as any).predictions?.filter((p: any) => p.isForecast).map((p: any) => ({
           date: p.date,
-          predictedNetSales: aiForecastRefinement?.adjustedPredictions?.find((a: any) => a.date === p.date)?.netSales ?? Math.round(p.netSales)
+          predictedNetSales: Math.round(p.netSales)
         }))
       : [];
     
@@ -172,7 +136,7 @@ Refine the forecast considering trends, day-of-week patterns, and seasonal facto
     
     // Calculate monthly forecast: actual so far + AI forecast for remaining days
     const avgForecastDaily = (tfResult as any).success ? (tfResult as any).avgForecastedDaily : 0;
-    const aiMonthlyPrediction = aiForecastRefinement?.monthlyTotal || (avgForecastDaily * monthInfo.totalDays);
+    const mlMonthlyPrediction = avgForecastDaily * monthInfo.totalDays;
     const monthlyForecastTarget = monthlyActual + (avgForecastDaily * monthInfo.remainingDays);
 
     // Compute forecast accuracy from past predictions vs actual
@@ -349,7 +313,7 @@ Refine the forecast considering trends, day-of-week patterns, and seasonal facto
       monthlyTarget: {
         actual: Math.round(monthlyActual),
         forecast: Math.round(monthlyForecastTarget),
-        aiPrediction: Math.round(aiMonthlyPrediction),
+        aiPrediction: Math.round(mlMonthlyPrediction),
         daysElapsed: monthInfo.elapsedDays,
         daysRemaining: monthInfo.remainingDays,
         totalDays: monthInfo.totalDays,
