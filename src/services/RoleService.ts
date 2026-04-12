@@ -205,6 +205,18 @@ export const getAllPermissions = (): Permission[] => {
       group: "POS",
     },
     { key: "view_pos_exchanges", label: "View Exchange History", group: "POS" },
+
+    // Communications
+    {
+      key: "view_communications",
+      label: "View Communication Logs",
+      group: "Communications",
+    },
+    {
+      key: "send_custom_notifications",
+      label: "Send Custom Notifications",
+      group: "Communications",
+    },
   ];
 };
 
