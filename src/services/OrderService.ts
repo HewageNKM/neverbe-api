@@ -48,9 +48,13 @@ export const getOrders = async (
     if (from) filters.push(`from:"${from}"`);
     if (stockId) filters.push(`stockId:"${stockId}"`);
     if (paymentMethod) filters.push(`paymentMethod:"${paymentMethod}"`);
+    // To overcome Algolia's default non-chronological ranking without replica indexes,
+    // we fetch a wider net of hits when searching isn't specifically narrowed,
+    // and sort them locally to guarantee newest orders are on page 1.
+    const fetchAllMode = !orderId && !startDateStr && !endDateStr;
     const { hits, nbHits } = await searchOrders(orderId || "", {
-      page: page - 1,
-      hitsPerPage: size,
+      page: fetchAllMode ? 0 : page - 1,
+      hitsPerPage: fetchAllMode ? 1000 : size,
       filters: filters.join(" AND "),
     });
 
@@ -93,10 +97,15 @@ export const getOrders = async (
       return getTime(b.createdAt) - getTime(a.createdAt);
     });
 
+    // If we fetched the wide net, we must manually slice for pagination
+    const finalOrders = fetchAllMode 
+        ? orders.slice((page - 1) * size, page * size) 
+        : orders;
+
     console.log(`Fetched ${orders.length} orders from Algolia on page ${page}`);
     return {
-      dataList: orders,
-      total: nbHits,
+      dataList: finalOrders,
+      total: fetchAllMode ? Math.min(orders.length, nbHits) : nbHits,
     };
   } catch (error: any) {
     console.error(error);
