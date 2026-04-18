@@ -15,7 +15,11 @@ export const getDailySaleReport = async (
     let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
-      query = query.where("paymentStatus", "==", status);
+      if (status.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", status);
+      }
     }
 
     if (from && to) {
@@ -222,7 +226,11 @@ export const getMonthlySummary = async (
     let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
-      query = query.where("paymentStatus", "==", status);
+      if (status.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", status);
+      }
     }
 
     if (from && to) {
@@ -434,7 +442,11 @@ export const getYearlySummary = async (
     let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
-      query = query.where("paymentStatus", "==", status);
+      if (status.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", status);
+      }
     }
 
     if (from && to) {
@@ -708,7 +720,11 @@ export const getTopSellingProducts = async (
     let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
-      query = query.where("paymentStatus", "==", status);
+      if (status.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", status);
+      }
     }
 
     if (from && to) {
@@ -801,7 +817,11 @@ export const getSalesByCategory = async (
     let query = adminFirestore.collection("orders") as any;
 
     if (status !== "all") {
-      query = query.where("paymentStatus", "==", status);
+      if (status.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", status);
+      }
     }
 
     if (from && to) {
@@ -911,7 +931,7 @@ export const getSalesByBrand = async (from?: string, to?: string) => {
   try {
     let query = adminFirestore
       .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     if (from && to) {
       const start = new Date(from);
@@ -1008,7 +1028,7 @@ export const getSalesVsDiscount = async (
   try {
     let query = adminFirestore
       .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     if (from && to) {
       const start = new Date(from);
@@ -1084,7 +1104,7 @@ export const getSalesByPaymentMethod = async (from?: string, to?: string) => {
   try {
     let query = adminFirestore
       .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     if (from && to) {
       const start = new Date(from);
@@ -1648,7 +1668,7 @@ export const getDailyRevenueReport = async (
   // Fetch paid orders
   const ordersSnapshot = await adminFirestore
     .collection("orders")
-    .where("paymentStatus", "==", "Paid")
+    .where("paymentStatus", "in", ["Paid", "PAID"])
     .where("createdAt", ">=", Timestamp.fromDate(fromDate))
     .where("createdAt", "<=", Timestamp.fromDate(toDate))
     .get();
@@ -1825,7 +1845,7 @@ export const getMonthlyRevenueReport = async (
   // Fetch paid orders
   const ordersSnapshot = await adminFirestore
     .collection("orders")
-    .where("paymentStatus", "==", "Paid")
+    .where("paymentStatus", "in", ["Paid", "PAID"])
     .where("createdAt", ">=", Timestamp.fromDate(fromDate))
     .where("createdAt", "<=", Timestamp.fromDate(toDate))
     .get();
@@ -2010,7 +2030,7 @@ export const getYearlyRevenueReport = async (
   // Fetch paid orders
   const ordersSnapshot = await adminFirestore
     .collection("orders")
-    .where("paymentStatus", "==", "Paid")
+    .where("paymentStatus", "in", ["Paid", "PAID"])
     .where("createdAt", ">=", Timestamp.fromDate(fromDate))
     .where("createdAt", "<=", Timestamp.fromDate(toDate))
     .get();
@@ -2160,7 +2180,7 @@ export const getCashFlowReport = async (from: string, to: string) => {
   try {
     let query = adminFirestore
       .collection("orders")
-      .where("paymentStatus", "==", "Paid");
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     if (from && to) {
       const start = new Date(from);
@@ -2663,14 +2683,14 @@ export const getCustomerAnalytics = async (
       .collection("orders")
       .where("createdAt", ">=", startTimestamp)
       .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "==", "Paid")
+      .where("paymentStatus", "in", ["Paid", "PAID"])
       .get();
 
     // Fetch orders before this period to identify returning customers
     const previousOrdersSnapshot = await adminFirestore
       .collection("orders")
       .where("createdAt", "<", startTimestamp)
-      .where("paymentStatus", "==", "Paid")
+      .where("paymentStatus", "in", ["Paid", "PAID"])
       .get();
 
     const previousCustomers = new Set<string>();
@@ -2835,7 +2855,7 @@ export const getTaxReport = async (
       .collection("orders")
       .where("createdAt", ">=", startTimestamp)
       .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "==", "Paid")
+      .where("paymentStatus", "in", ["Paid", "PAID"])
       .get();
 
     const transactions: TaxReportItem[] = [];

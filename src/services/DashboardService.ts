@@ -69,12 +69,12 @@ export const getOverviewByDateRange = async (
     const startTimestamp = Timestamp.fromDate(startDate);
     const endTimestamp = Timestamp.fromDate(endDate);
 
-    // Fetch orders within date range (exclude Failed and Refunded)
+    // Fetch orders within date range (only Paid orders for accurate dashboard cards)
     const ordersQuery = adminFirestore
       .collection("orders")
       .where("createdAt", ">=", startTimestamp)
       .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "not-in", ["Failed", "Refunded"]);
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     const querySnapshot = await ordersQuery.get();
 
@@ -212,7 +212,7 @@ export const getYearlySalesPerformance = async (
       .collection("orders")
       .where("createdAt", ">=", startTimestamp)
       .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "in", ["Paid", "Pending"]);
+      .where("paymentStatus", "in", ["Paid", "PAID"]);
 
     const querySnapshot = await ordersQuery.get();
 
