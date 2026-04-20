@@ -25,33 +25,33 @@ const SETTINGS_KEY = "neural_config";
  * with idempotency based on message hash.
  */
 async function createAdminNotification(type: string, title: string, message: string, metadata: any = {}) {
-    try {
-        const db = admin.firestore();
-        // Simple hash check - avoid sending identical message within 24h
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        const existing = await db.collection("erp_notifications")
-            .where("title", "==", title)
-            .where("createdAt", ">", yesterday)
-            .limit(1)
-            .get();
-            
-        if (!existing.empty) return; // Skip duplicate within rolling 24h window
+  try {
+    const db = admin.firestore();
+    // Simple hash check - avoid sending identical message within 24h
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
 
-        await db.collection("erp_notifications").add({
-            type, title, message, metadata,
-            read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-    } catch (err) {
-        console.error("Failed to create neural notification", err);
-    }
+    const existing = await db.collection("erp_notifications")
+      .where("title", "==", title)
+      .where("createdAt", ">", yesterday)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) return; // Skip duplicate within rolling 24h window
+
+    await db.collection("erp_notifications").add({
+      type, title, message, metadata,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    console.error("Failed to create neural notification", err);
+  }
 }
 
 export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
   const startTime = Date.now();
-  
+
   try {
     // 0. Cache Guard (Soft Refresh Optimization)
     const cacheDoc = await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
@@ -86,13 +86,13 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
     // 3a. Persist Forecast Snapshot for Real vs ML comparison
     const today = new Date().toISOString().split('T')[0];
-    const forecastOnly = (tfResult as any).success 
+    const forecastOnly = (tfResult as any).success
       ? (tfResult as any).predictions?.filter((p: any) => p.isForecast).map((p: any) => ({
-          date: p.date,
-          predictedNetSales: Math.round(p.netSales)
-        }))
+        date: p.date,
+        predictedNetSales: Math.round(p.netSales)
+      }))
       : [];
-    
+
     if (forecastOnly.length > 0) {
       await admin.firestore()
         .collection(CACHE_COLLECTION).doc(CACHE_KEY)
@@ -115,7 +115,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       .orderBy("generatedAt", "desc")
       .limit(30)
       .get();
-    
+
     // Build "what AI predicted for dates that are now in the past"
     const pastPredictionMap: Record<string, number> = {};
     pastSnapshots.docs.forEach(doc => {
@@ -133,18 +133,31 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       getCurrentMonthActualSales(),
       Promise.resolve(getMonthDaysInfo())
     ]);
-    
-    // Calculate monthly forecast: actual so far + AI forecast for remaining days
+
+    // Calculate monthly forecast: AI determines the static expected monthly target
     const avgForecastDaily = (tfResult as any).success ? (tfResult as any).avgForecastedDaily : 0;
     const mlMonthlyPrediction = avgForecastDaily * monthInfo.totalDays;
-    const monthlyForecastTarget = monthlyActual + (avgForecastDaily * monthInfo.remainingDays);
+    
+    // Lock the target for the month so it doesn't fluctuate
+    const currentMonthKey = `${monthInfo.year}-${monthInfo.monthName}`;
+    const savedTargets = cacheDoc.exists ? cacheDoc.data()?.savedTargets || {} : {};
+    let monthlyForecastTarget = 0;
+    
+    if (savedTargets[currentMonthKey] && savedTargets[currentMonthKey] > 0) {
+      monthlyForecastTarget = savedTargets[currentMonthKey];
+    } else {
+      monthlyForecastTarget = mlMonthlyPrediction;
+      if (monthlyForecastTarget > 0) {
+        savedTargets[currentMonthKey] = monthlyForecastTarget;
+      }
+    }
 
     // Compute forecast accuracy from past predictions vs actual
     let forecastAccuracy = 0;
     let accuracyDataPoints = 0;
     const historicalMap: Record<string, number> = {};
     historical.forEach(h => { historicalMap[h.date] = h.netSales; });
-    
+
     Object.entries(pastPredictionMap).forEach(([date, predicted]) => {
       const actual = historicalMap[date];
       if (actual !== undefined && predicted > 0) {
@@ -153,15 +166,15 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
         accuracyDataPoints++;
       }
     });
-    forecastAccuracy = accuracyDataPoints > 0 
-      ? Math.round((forecastAccuracy / accuracyDataPoints) * 1000) / 10 
+    forecastAccuracy = accuracyDataPoints > 0
+      ? Math.round((forecastAccuracy / accuracyDataPoints) * 1000) / 10
       : 0; // 0 means no data yet
 
     // 4. Intelligence Modules (Context-Shared)
     const neuralRisks = analyzeNeuralStockRisks(ctx, config.forecastWindow || 14);
     const promoSuggestions = analyzeNeuralPromoStrategy(ctx);
     const customerRetention = analyzeNeuralCustomerRetention(ctx);
-    
+
     // 5. Global Health Calculation (Refined Logic)
     const salesVelocity = comparison.percentageChange.revenue;
     const inventoryRisk = Math.max(0, 100 - (neuralRisks.length * 10)); // 10% penalty per critical risk
@@ -176,17 +189,17 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
     // Standard Resilience Score (If Inflow covers 1.5x Outflow, Score is 100)
     const financialResilience = Math.min(100, Math.round((totalInflow / (totalOutflow || 1)) * 66));
-    
+
     // Applying Weighting Mode
     let wTrends = 0.4, wStock = 0.3, wProfit = 0.3;
     if (config.weightingMode === 'GROWTH') { wTrends = 0.6; wStock = 0.2; wProfit = 0.2; }
     else if (config.weightingMode === 'STABILITY') { wTrends = 0.2; wStock = 0.2; wProfit = 0.6; }
     else if (config.weightingMode === 'INVENTORY') { wTrends = 0.2; wStock = 0.6; wProfit = 0.2; }
-    
+
     const healthScore = Math.round(
-      ((salesVelocity > -5 ? 100 : 50) * wTrends) + 
-      (inventoryRisk * wStock) +         
-      (profitStability * wProfit)         
+      ((salesVelocity > -5 ? 100 : 50) * wTrends) +
+      (inventoryRisk * wStock) +
+      (profitStability * wProfit)
     );
 
     // 6. Autonomous Interventions
@@ -201,9 +214,9 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       for (const risk of neuralRisks) {
         const productDetail = ctx.productMap.get(risk.productId);
         const invTitle = `Neural Stock Out: ${risk.name}`;
-        const invDesc = risk.isOutOfStock 
-            ? "Product is currently OUT OF STOCK." 
-            : `Predicted depletion in ${risk.daysRemaining} days (AI Scaled Velocity).`;
+        const invDesc = risk.isOutOfStock
+          ? "Product is currently OUT OF STOCK."
+          : `Predicted depletion in ${risk.daysRemaining} days (AI Scaled Velocity).`;
 
         interventions.push({
           type: "INVENTORY",
@@ -217,30 +230,30 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
         // Trigger persistent notification for critical risks
         if (risk.riskLevel === 'CRITICAL') {
-           await createAdminNotification("AI", invTitle, invDesc, {
-              productId: risk.productId,
-              sku: productDetail?.sku || "N/A",
-              daysRemaining: risk.daysRemaining,
-              revenueRisk: (risk.velocity * 30 * (productDetail?.wholesalePrice || 0)).toFixed(0),
-              riskLevel: "CRITICAL"
-           });
+          await createAdminNotification("AI", invTitle, invDesc, {
+            productId: risk.productId,
+            sku: productDetail?.sku || "N/A",
+            daysRemaining: risk.daysRemaining,
+            revenueRisk: (risk.velocity * 30 * (productDetail?.wholesalePrice || 0)).toFixed(0),
+            riskLevel: "CRITICAL"
+          });
         }
       }
     }
     if (customerRetention.length > 0) {
       customerRetention.filter(c => c.riskLevel === 'CRITICAL').forEach(c => {
-         interventions.push({ type: "REVENUE", priority: "CRITICAL", title: `Churn Alert: ${c.name}`, desc: `Frequent high-spender has breached 90-day purchase gap.` });
+        interventions.push({ type: "REVENUE", priority: "CRITICAL", title: `Churn Alert: ${c.name}`, desc: `Frequent high-spender has breached 90-day purchase gap.` });
       });
     }
 
     // 6. Strategic Briefing (Gemini Optimized @ 4h Cache)
     let briefing = "";
-    
+
     const generateHeuristicBriefing = (hs: number, iv: any[]) => {
       // 🟢 Growth/Optimal Quadrant
       if (hs >= 90 && iv.length === 0) return "Systems optimal. Catalog velocity and liquidity metrics are in a growth quadrant.";
       if (hs >= 80 && iv.every(i => i.priority !== 'CRITICAL')) return "Stability high. System is absorbing minor demand drifts effectively.";
-      
+
       // 🔴 Critical Interventions (Safe-Mode Summary)
       const criticals = iv.filter(i => i.priority === 'CRITICAL');
       if (criticals.length > 0) {
@@ -251,7 +264,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
       // 🟡 General Caution
       if (hs < 70) return "Heightened volatility detected. Neural core suggesting a cautious position on inventory expansion.";
-      
+
       return null;
     };
 
@@ -275,15 +288,15 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
           await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({ lastLLMUpdateTime: admin.firestore.FieldValue.serverTimestamp() });
         } catch (err: any) {
           console.error("[NeuralCore] LLM Generation Failed. Falling back to Enhanced Heuristic.", err.message);
-          
+
           // Emergency Fallback: If heuristic was null and LLM failed, we MUST provide a real context briefing
           const critical = interventions.find(i => i.priority === 'CRITICAL');
           if (critical) {
             briefing = `Risk Mitigation Active: ${critical.title} requires immediate administrative attention.`;
           } else {
-            briefing = healthScore > 75 
-                ? "Neural core stable. Real-time optimization is active across all business sectors."
-                : "Market synchronization in progress. Refining predictive models for current volatility.";
+            briefing = healthScore > 75
+              ? "Neural core stable. Real-time optimization is active across all business sectors."
+              : "Market synchronization in progress. Refining predictive models for current volatility.";
           }
         }
       }
@@ -330,6 +343,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
     await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).set({
       data: finalFeed,
+      savedTargets: savedTargets,
       expiry: expiryTimestamp,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -343,7 +357,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       if (hoursSinceLast >= 12 && items.length > 0) {
         const batch = admin.firestore().batch();
         const notifyCol = admin.firestore().collection("erp_notifications");
-        
+
         // Take top 3 critical interventions to avoid flooding
         items.filter(i => i.priority === 'CRITICAL').slice(0, 3).forEach(item => {
           const docRef = notifyCol.doc(`NEURAL_${item.type}_${Date.now()}`);
