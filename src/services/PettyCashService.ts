@@ -174,10 +174,11 @@ export const getPettyCashList = async (
     const td = new Date(filters.toDate).getTime() + 86400000; // Add one day to include the entire 'toDate'
     results = results.filter((r) => new Date(r.date as string).getTime() < td);
   }
+  const total = results.length;
+
   // Apply pagination
   results = results.slice((page - 1) * size, page * size);
 
-  const total = results.length;
   return { data: results, total };
 };
 

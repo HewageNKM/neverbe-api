@@ -2584,7 +2584,7 @@ export const getExpenseReport = async (
       .where("date", "<=", endTimestamp);
 
     if (category && category !== "all") {
-      query = query.where("for", "==", category);
+      query = query.where("category", "==", category);
     }
 
     const snapshot = await query.get();
@@ -2594,8 +2594,8 @@ export const getExpenseReport = async (
       return {
         id: doc.id,
         date: toSafeLocaleString(data.date ?? data.createdAt),
-        category: data.for || "Other",
-        description: data.description || "",
+        category: data.category || "Other",
+        description: data.note || "",
         amount: Number(data.amount || 0),
         status: data.status || "PENDING",
         createdBy: data.createdBy,
