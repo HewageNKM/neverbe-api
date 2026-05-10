@@ -1,5 +1,5 @@
 import admin, { credential } from "firebase-admin";
-import { Firestore } from "@google-cloud/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 
 // 1. Keep your working initialization logic
 if (!admin.apps.length) {
@@ -21,30 +21,17 @@ if (!admin.apps.length) {
 // 2. Create the instances ONLY when accessed via a "Proxy"
 // This tricks Turbopack into thinking adminFirestore exists 
 // but prevents it from crashing during the build.
-let _firestore: Firestore | null = null;
-
 export const adminFirestore = {
   get firestore() {
-    if (!_firestore) {
-      const config: any = {
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        ignoreUndefinedProperties: true,
-      };
-      if (process.env.FIREBASE_ADMIN_PRIVATE_KEY) {
-        config.credentials = {
-          client_email: process.env.FIREBASE_CLIENT_EMAIL,
-          private_key: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-        };
-      }
-      _firestore = new Firestore(config);
-    }
-    return _firestore;
+    const db = getFirestore("default");
+    try { db.settings({ ignoreUndefinedProperties: true }); } catch (e) { }
+    return db;
   },
   // Map common firestore methods so existing code doesn't break
-  collection: (path: string) => adminFirestore.firestore.collection(path),
-  doc: (path: string) => adminFirestore.firestore.doc(path),
-  runTransaction: (updateFunction: any) => adminFirestore.firestore.runTransaction(updateFunction),
-  batch: () => adminFirestore.firestore.batch(),
+  collection: (path: string) => getFirestore("default").collection(path),
+  doc: (path: string) => getFirestore("default").doc(path),
+  runTransaction: (updateFunction: any) => getFirestore("default").runTransaction(updateFunction),
+  batch: () => getFirestore("default").batch(),
 } as unknown as admin.firestore.Firestore;
 
 // 3. Export the other missing pieces for your Auth and Storage services
