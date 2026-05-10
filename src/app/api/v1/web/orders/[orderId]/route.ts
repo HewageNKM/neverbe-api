@@ -23,12 +23,13 @@ export const GET = async (
     if (order.from === "Store") {
       let orderDate: Date | null = null;
 
-      if (order.createdAt?._seconds) {
-        orderDate = new Date(order.createdAt._seconds * 1000);
-      } else if (order.createdAt?.toDate) {
-        orderDate = order.createdAt.toDate();
-      } else if (order.createdAt) {
-        orderDate = new Date(order.createdAt);
+      const createdAt: any = order.createdAt;
+      if (createdAt?._seconds) {
+        orderDate = new Date(createdAt._seconds * 1000);
+      } else if (createdAt?.toDate) {
+        orderDate = createdAt.toDate();
+      } else if (createdAt) {
+        orderDate = new Date(createdAt);
       }
 
       if (orderDate) {

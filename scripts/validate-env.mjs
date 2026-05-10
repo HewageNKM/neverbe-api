@@ -17,8 +17,6 @@ const requiredBuildVars = [
   "API_URL",
   "POS_BASE_URL",
   "ERP_BASE_URL",
-  "ALGOLIA_APP_ID",
-  "ALGOLIA_SEARCH_API_KEY",
   "FIREBASE_PROJECT_ID",
   "FIREBASE_STORAGE_BUCKET",
 ];

@@ -3,7 +3,6 @@ import { Timestamp } from "firebase-admin/firestore";
 import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
 import { OrderItem } from "@/model/OrderItem";
-import { searchStockInventory } from "./AlgoliaService";
 import dayjs from "dayjs";
 
 export const getDailySaleReport = async (
@@ -1262,13 +1261,17 @@ export const fetchLiveStock = async (
   };
 }> => {
   try {
-    const filters = stockId !== "all" ? `stockId:"${stockId}"` : "";
+    let query: any = adminFirestore.collection("stock_inventory");
 
-    // Algolia for efficient retrieval
-    const { hits, nbHits } = await searchStockInventory("", {
-      filters,
-      hitsPerPage: 1000, // Large enough for live stock report, or handle pagination if needed
-    });
+    if (stockId !== "all") {
+      query = query.where("stockId", "==", stockId);
+    }
+
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.limit(1000).get();
+    const hits = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
     const inventoryDocs = hits;
     const total = nbHits;

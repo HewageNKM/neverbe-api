@@ -4,79 +4,12 @@ import { Product } from "@/interfaces/Product";
 import { adminFirestore } from "@/firebase/firebaseAdmin";
 import { getActivePromotions } from "./WebPromotionService";
 import { ProductVariant } from "@/interfaces/ProductVariant";
-import { searchProducts } from "./AlgoliaService";
 
 /**
  * ProductService - Thin wrapper over ProductRepository
  * Delegates data access to repository layer, keeps business logic here
  */
 
-const buildAlgoliaFiltersForWeb = (options: {
-  tags?: string[];
-  brand?: string;
-  category?: string;
-  inStock?: boolean;
-  sizes?: string[];
-  gender?: string;
-  createdAtMin?: number;
-}): string => {
-  const filters: string[] = ["isDeleted:false", "status:true", "listing:true"];
-
-  if (options.inStock !== undefined) {
-    if (options.inStock) {
-      filters.push("inStock:true");
-    } else {
-      filters.push("inStock:false");
-    }
-  }
-
-  if (options.gender) {
-    filters.push(`gender:"${options.gender}"`);
-  }
-
-  if (options.brand) {
-    filters.push(`brand:"${options.brand}"`);
-  }
-
-  if (options.category) {
-    filters.push(`category:"${options.category}"`);
-  }
-
-  if (options.tags && options.tags.length > 0) {
-    const tagFilters = options.tags.map((t) => `tags:"${t}"`).join(" OR ");
-    filters.push(`(${tagFilters})`);
-  }
-
-  if (options.sizes && options.sizes.length > 0) {
-    const sizeFilters = options.sizes
-      .map((s) => `availableSizes:"${s}"`)
-      .join(" OR ");
-    filters.push(`(${sizeFilters})`);
-  }
-
-  if (options.createdAtMin) {
-    filters.push(`createdAt >= ${options.createdAtMin}`);
-  }
-
-  return filters.join(" AND ");
-};
-
-const mapAlgoliaHitsToProducts = (
-  hits: Record<string, unknown>[],
-): Product[] => {
-  return hits.map((hit: Record<string, unknown>) => {
-    const activeVariants = ((hit.variants as ProductVariant[]) || []).filter(
-      (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
-    );
-
-    return {
-      ...hit,
-      id: hit.objectID || hit.id,
-      productId: hit.objectID || hit.id,
-      variants: activeVariants,
-    } as unknown as Product;
-  });
-};
 
 // ====================== Enrichment Helpers ======================
 
@@ -199,20 +132,18 @@ export const getNewArrivals = async (
 export const getRecentItems = async (limit: number = 8) => {
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const threshold = ninetyDaysAgo.getTime();
 
-  const filtersStr = buildAlgoliaFiltersForWeb({
-    createdAtMin: threshold,
-  });
-
-  const { hits } = await searchProducts("", {
-    page: 0,
-    hitsPerPage: limit,
-    filters: filtersStr,
-  });
-
-  const products = mapAlgoliaHitsToProducts(hits);
-  return enrichProductsWithLabels(products);
+    const snapshot = await adminFirestore.collection("products")
+      .where("status", "==", true)
+      .where("listing", "==", true)
+      .where("isDeleted", "==", false)
+      .where("createdAt", ">=", ninetyDaysAgo)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+  
+    const products = snapshot.docs.map(doc => ({ productId: doc.id, ...doc.data() } as unknown as Product));
+    return enrichProductsWithLabels(products);
 };
 
 // ====================== Get Product By ID ======================
@@ -414,25 +345,30 @@ export const getDealsProductsFiltered = async (
 
 // ====================== Search Web Products ======================
 export const searchWebProducts = async (
-  query: string,
+  query_string: string,
   options: {
     page?: number;
     size?: number;
   } = {},
 ): Promise<{ total: number; dataList: Product[] }> => {
   const { page = 1, size = 20 } = options;
+    let query: any = adminFirestore.collection("products")
+      .where("status", "==", true)
+      .where("listing", "==", true)
+      .where("isDeleted", "==", false);
+
+    if (query_string) {
+      query = query.where("nameLower", ">=", query_string.toLowerCase()).where("nameLower", "<=", query_string.toLowerCase() + "\uf8ff");
+    }
+
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.orderBy("createdAt", "desc").offset((page - 1) * size).limit(size).get();
   
-  // Apply standard web filters (only active, listed, non-deleted)
-  const filtersStr = "status:true AND listing:true AND isDeleted:false";
-
-  const { hits, nbHits } = await searchProducts(query, {
-    page: page - 1,
-    hitsPerPage: size,
-    filters: filtersStr,
-  });
-
-  const products = mapAlgoliaHitsToProducts(hits);
-  const enriched = await enrichProductsWithLabels(products);
-
-  return { total: nbHits, dataList: enriched };
+    const products = snapshot.docs.map(doc => ({ productId: doc.id, ...doc.data() } as unknown as Product));
+    const enriched = await enrichProductsWithLabels(products);
+  
+    return { total: nbHits, dataList: enriched };
 };
+

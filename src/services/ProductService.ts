@@ -7,7 +7,6 @@ import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
 import { PopularItem } from "@/model/PopularItem";
 import { Timestamp } from "firebase-admin/firestore";
-import { searchProducts } from "./AlgoliaService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
 
@@ -139,29 +138,33 @@ export const getProducts = async (
   listing?: boolean,
 ): Promise<{ dataList: Omit<Product, "isDeleted">[]; rowCount: number }> => {
   try {
-    const filters: string[] = ["isDeleted:false"];
+    let query: any = adminFirestore.collection(PRODUCTS_COLLECTION).where("isDeleted", "==", false);
 
-    if (brand) filters.push(`brand:"${brand}"`);
-    if (category) filters.push(`category:"${category}"`);
-    if (typeof status === "boolean") filters.push(`status:${status}`);
-    if (typeof listing === "boolean") filters.push(`listing:${listing}`);
+    if (brand) query = query.where("brand", "==", brand);
+    if (category) query = query.where("category", "==", category);
+    if (typeof status === "boolean") query = query.where("status", "==", status);
+    if (typeof listing === "boolean") query = query.where("listing", "==", listing);
 
-    const { hits, nbHits } = await searchProducts(search || "", {
-      page: pageNumber - 1,
-      hitsPerPage: size,
-      filters: filters.join(" AND "),
-    });
+    if (search) {
+      query = query.where("nameLower", ">=", search.toLowerCase()).where("nameLower", "<=", search.toLowerCase() + "\uf8ff");
+    }
 
-    const products = hits.map((hit: any) => {
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
+
+    const products = snapshot.docs.map((doc) => {
+      const hit = doc.data();
       const activeVariants = (hit.variants || []).filter(
         (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
       );
 
       return {
         ...hit,
-        productId: hit.objectID || hit.id,
+        productId: doc.id,
         variants: activeVariants,
-        createdAt: hit.createdAt, // Switched to raw as per previous refinement logic
+        createdAt: hit.createdAt,
         updatedAt: hit.updatedAt,
       } as Omit<Product, "isDeleted">;
     });

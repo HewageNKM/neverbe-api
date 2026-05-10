@@ -7,7 +7,6 @@ import {
 } from "./IntegrityService";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
-import { searchOrders } from "./AlgoliaService";
 import { 
   sendOrderStatusUpdateSMS, 
   sendOrderStatusUpdateEmail 
@@ -30,80 +29,51 @@ export const getOrders = async (
   paymentMethod?: string,
 ) => {
   try {
-    const filters: string[] = [];
+    let query: any = adminFirestore.collection(ORDERS_COLLECTION);
 
     if (startDateStr && endDateStr) {
       const startDate = new Date(startDateStr);
       const endDate = new Date(endDateStr);
       endDate.setHours(23, 59, 59, 999);
-
-      const start = startDate.getTime();
-      const end = endDate.getTime();
-
-      filters.push(`createdAt >= ${start} AND createdAt <= ${end}`);
+      query = query.where("createdAt", ">=", startDate).where("createdAt", "<=", endDate);
     }
-    if (status) filters.push(`status:"${status}"`);
-    if (orderId) filters.push(`orderId:"${orderId}"`);
-    if (payment) filters.push(`paymentStatus:"${payment}"`);
-    if (from) filters.push(`from:"${from}"`);
-    if (stockId) filters.push(`stockId:"${stockId}"`);
-    if (paymentMethod) filters.push(`paymentMethod:"${paymentMethod}"`);
-    // To overcome Algolia's default non-chronological ranking without replica indexes,
-    // we fetch a wider net of hits when searching isn't specifically narrowed,
-    // and sort them locally to guarantee newest orders are on page 1.
+
+    if (status) query = query.where("status", "==", status);
+    if (payment) query = query.where("paymentStatus", "==", payment);
+    if (from) query = query.where("from", "==", from);
+    if (stockId) query = query.where("stockId", "==", stockId);
+    if (paymentMethod) query = query.where("paymentMethod", "==", paymentMethod);
+
+    if (orderId) {
+      query = query.where("orderId", "==", orderId);
+    }
+
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
     const fetchAllMode = !orderId && !startDateStr && !endDateStr;
-    const { hits, nbHits } = await searchOrders(orderId || "", {
-      page: fetchAllMode ? 0 : page - 1,
-      hitsPerPage: fetchAllMode ? 1000 : size,
-      filters: filters.join(" AND "),
-    });
+    const fetchLimit = fetchAllMode ? 1000 : size;
 
-    let sortedHits = hits as any[];
+    const snapshot = await query.orderBy("createdAt", "desc").offset((page - 1) * fetchLimit).limit(fetchLimit).get();
     
-    // 1. Sort all raw hits chronologically
-    sortedHits.sort((a, b) => {
-      const getTime = (dateValue: any) => {
-        if (!dateValue) return 0;
-        if (typeof dateValue === "number") {
-          return dateValue < 10000000000 ? dateValue * 1000 : dateValue;
-        }
-        if (typeof dateValue === "object") {
-          if (dateValue._seconds !== undefined) return dateValue._seconds * 1000;
-          if (dateValue.seconds !== undefined) return dateValue.seconds * 1000;
-          if (dateValue.toMillis) return dateValue.toMillis();
-        }
-        return new Date(dateValue).getTime();
-      };
-      return getTime(b.createdAt) - getTime(a.createdAt);
-    });
-
-    // 2. Slice for the current page IF we fetched a wide net
-    const pagedHits = fetchAllMode 
-      ? sortedHits.slice((page - 1) * size, page * size) 
-      : sortedHits;
-
-    // 3. Process integrity checks ONLY for the sliced items (max 20 per request)
     const orders: Order[] = [];
-    for (const hit of pagedHits) {
-      const integrityResult = await validateDocumentIntegrity(
-        ORDERS_COLLECTION,
-        hit.objectID || hit.id,
-      );
-
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const integrityResult = await validateDocumentIntegrity(ORDERS_COLLECTION, doc.id);
       const order: Order = {
-        ...hit,
-        userId: hit.userId || null, 
-        orderId: hit.objectID || hit.id,
+        ...data,
+        userId: data.userId || null, 
+        orderId: doc.id,
         integrity: integrityResult,
-        customer: hit.customer ? { ...hit.customer } : null,
+        customer: data.customer ? { ...data.customer } : null,
       } as unknown as Order;
       orders.push(order);
     }
 
-    console.log(`Fetched ${sortedHits.length} orders from Algolia, returning page ${page}`);
+    console.log(`Fetched ${orders.length} orders from Firestore, returning page ${page}`);
     return {
       dataList: orders,
-      total: fetchAllMode ? Math.min(sortedHits.length, nbHits) : nbHits,
+      total: nbHits,
     };
   } catch (error: any) {
     console.error(error);

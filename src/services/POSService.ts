@@ -4,7 +4,6 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { Product } from "@/model/Product";
 import { Order } from "@/model/Order";
 import { AppError } from "@/utils/apiResponse";
-import { searchProducts } from "./AlgoliaService";
 import { nanoid } from "nanoid";
 
 // ================================
@@ -336,7 +335,7 @@ export const getProductsByStock = async (
   }
 };
 
-// ✅ Search products by name with stock filtering using Algolia hybrid approach
+// ✅ Search products by name with stock filtering using native Firestore
 export const searchProductsByStock = async (
   stockId: string,
   query: string,
@@ -364,24 +363,19 @@ export const searchProductsByStock = async (
     const productIds = Array.from(productIdsSet);
     if (productIds.length === 0) return [];
 
-    // Request a large number of hits to ensure we get products that might be in this stock
-    const { hits } = await searchProducts(query, {
-      hitsPerPage: 1000,
-      filters: "status:true AND isDeleted:false",
-    });
+    let fsQuery: any = adminFirestore.collection("products").where("status", "==", true).where("isDeleted", "==", false);
+    if (query) {
+      fsQuery = fsQuery.where("nameLower", ">=", query.toLowerCase()).where("nameLower", "<=", query.toLowerCase() + "\uf8ff");
+    }
+    const productsSnapshot = await fsQuery.limit(1000).get();
 
-    // 4️⃣ Filter Algolia results to only include those present in the physical stock location
-    const products: Product[] = hits
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((hit: any) => productIds.includes(hit.objectID))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((hit: any) => {
-        // Remove Algolia specific fields and map objectID -> id
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { objectID, _highlightResult, ...rest } = hit;
+    // 4️⃣ Filter results to only include those present in the physical stock location
+    const products: Product[] = productsSnapshot.docs
+      .filter((doc) => productIds.includes(doc.id))
+      .map((doc) => {
         return {
-          id: objectID,
-          ...rest,
+          id: doc.id,
+          ...doc.data(),
         } as Product;
       });
 

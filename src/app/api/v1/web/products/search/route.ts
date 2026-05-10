@@ -2,7 +2,7 @@ import { searchWebProducts } from "@/services/WebProductService";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Web Search API - provides SSR searchable results via Algolia
+ * Web Search API - provides SSR searchable results via Firestore Native Search
  * Route: /api/v1/web/products/search
  */
 export const GET = async (req: NextRequest) => {
@@ -24,7 +24,7 @@ export const GET = async (req: NextRequest) => {
       size,
     });
 
-    // Match Algolia's response structure for backward compatibility if needed,
+    // Match legacy response structure for backward compatibility if needed,
     // or return the service's structured response.
     // The service returns { total, dataList }.
     return NextResponse.json({

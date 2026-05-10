@@ -6,7 +6,6 @@ import { nanoid } from "nanoid";
 import { toSafeLocaleString } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
-import { searchPromotions, searchCoupons } from "./AlgoliaService";
 
 const PROMOTIONS_COLLECTION = "promotions";
 
@@ -30,23 +29,25 @@ export const getPromotions = async (
   type?: string,
 ): Promise<{ dataList: Promotion[]; rowCount: number }> => {
   try {
-    const filters: string[] = ["isDeleted:false"];
+    let query: any = adminFirestore.collection(PROMOTIONS_COLLECTION).where("isDeleted", "==", false);
 
     if (filterStatus && filterStatus !== "all") {
-      filters.push(
-        `isActive:${filterStatus === "ACTIVE" || filterStatus === "true"}`,
-      );
+      query = query.where("isActive", "==", filterStatus === "ACTIVE" || filterStatus === "true");
     }
 
     if (type && type !== "all") {
-      filters.push(`type:"${type}"`);
+      query = query.where("type", "==", type);
     }
 
-    const { hits, nbHits } = await searchPromotions(search || "", {
-      page: pageNumber - 1,
-      hitsPerPage: size,
-      filters: filters.join(" AND "),
-    });
+    if (search) {
+      query = query.where("name", ">=", search).where("name", "<=", search + "\uf8ff");
+    }
+
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
+    const hits = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
     const dataList = hits.map((hit: any) => ({
       ...hit,
@@ -242,19 +243,21 @@ export const getCoupons = async (
   search?: string,
 ): Promise<{ dataList: Coupon[]; rowCount: number }> => {
   try {
-    const filters: string[] = ["isDeleted:false"];
+    let query: any = adminFirestore.collection(COUPONS_COLLECTION).where("isDeleted", "==", false);
 
     if (filterStatus && filterStatus !== "all") {
-      filters.push(
-        `isActive:${filterStatus === "ACTIVE" || filterStatus === "true"}`,
-      );
+      query = query.where("isActive", "==", filterStatus === "ACTIVE" || filterStatus === "true");
     }
 
-    const { hits, nbHits } = await searchCoupons(search || "", {
-      page: pageNumber - 1,
-      hitsPerPage: size,
-      filters: filters.join(" AND "),
-    });
+    if (search) {
+      query = query.where("code", ">=", search).where("code", "<=", search + "\uf8ff");
+    }
+
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
+    const hits = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
     const dataList = hits.map((hit: any) => ({
       ...hit,

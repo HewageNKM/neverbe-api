@@ -7,7 +7,6 @@ import {
 } from "@/model/InventoryAdjustment";
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
-import { searchAdjustments } from "./AlgoliaService";
 import { nanoid } from "nanoid";
 
 const COLLECTION = "inventory_adjustments";
@@ -40,7 +39,7 @@ const generateAdjustmentNumber = async (): Promise<string> => {
 };
 
 /**
- * Get all adjustments with Algolia search
+ * Get all adjustments with native Firestore search
  */
 export const getAdjustments = async (
   pageNumber = 1,
@@ -50,23 +49,27 @@ export const getAdjustments = async (
   status?: AdjustmentStatus,
 ): Promise<{ dataList: InventoryAdjustment[]; rowCount: number }> => {
   try {
-    const filters: string[] = [];
+    let query: any = adminFirestore.collection(COLLECTION);
 
-    if (type) filters.push(`type:"${type}"`);
-    if (status) filters.push(`status:"${status}"`);
+    if (type) query = query.where("type", "==", type);
+    if (status) query = query.where("status", "==", status);
 
-    const { hits, nbHits } = await searchAdjustments(search || "", {
-      page: pageNumber - 1,
-      hitsPerPage: size,
-      filters: filters.join(" AND "),
-    });
+    if (search) {
+      query = query.where("adjustmentNumber", ">=", search).where("adjustmentNumber", "<=", search + "\uf8ff");
+    }
 
-    const adjustments = hits.map((hit: Record<string, any>) => ({
-      ...hit,
-      id: (hit.objectID as string) || (hit.id as string),
-      createdAt: hit.createdAt,
-      updatedAt: hit.updatedAt,
-    })) as (InventoryAdjustment & { adjustedByName?: string })[];
+    const countSnapshot = await query.count().get();
+    const nbHits = countSnapshot.data().count;
+
+    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
+
+    const adjustments = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        id: doc.id,
+      };
+    }) as (InventoryAdjustment & { adjustedByName?: string })[];
 
     // Resolve adjustedBy user names
     const userIds = Array.from(

@@ -5,6 +5,7 @@ import { OrderItem } from "@/interfaces/BaseItem";
 import crypto from "crypto";
 import { getOrderByIdForInvoice } from "./WebOrderService";
 import { verifyCaptchaToken } from "./CapchaService";
+import { FieldValue } from "firebase-admin/firestore";
 
 const OTP_COLLECTION = "otp_verifications";
 const ORDERS_COLLECTION = "orders";
@@ -834,7 +835,7 @@ export const sendManualNotification = async (
       type: `manual_${type}`,
       to: to,
       content,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     return true;

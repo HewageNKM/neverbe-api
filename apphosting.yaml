@@ -15,9 +15,7 @@ env:
     value: "https://pos.neverbe.lk"
   - variable: ERP_BASE_URL
     value: "https://erp.neverbe.lk"
-  - variable: ALGOLIA_APP_ID
     value: "T4W2OD5EXU"
-  - variable: ALGOLIA_SEARCH_API_KEY
     value: "a511b0ae44b3411786428006f0eab919"
   - variable: FIREBASE_PROJECT_ID
     value: "neverbe-18307"
