@@ -17,7 +17,7 @@ if (!admin.apps.length) {
   }
 }
 
-export const adminFirestore = admin.firestore();
+export const adminFirestore = admin.firestore("default");
 try {
   adminFirestore.settings({ ignoreUndefinedProperties: true });
 } catch (e) {
