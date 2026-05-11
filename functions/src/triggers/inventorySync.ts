@@ -1,5 +1,6 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
 /**
  * Automatically synchronizes global product stock count whenever an inventory record changes.
@@ -9,7 +10,10 @@ import * as admin from "firebase-admin";
  * 2. 'inStock' is true if the actual sum is greater than 0.
  * 3. Individual inventory records (real stock) can go negative (e.g., for POS sales).
  */
-export const syncProductStock = onDocumentWritten("stock_inventory/{inventoryId}", async (event) => {
+export const syncProductStock = onDocumentWritten({
+  document: "stock_inventory/{inventoryId}",
+  database: "default"
+}, async (event) => {
   const afterData = event.data?.after.data();
   const beforeData = event.data?.before.data();
   
@@ -20,7 +24,7 @@ export const syncProductStock = onDocumentWritten("stock_inventory/{inventoryId}
     return;
   }
 
-  const db = admin.firestore();
+  const db = getFirestore("default");
   
   try {
     // 1. Fetch all inventory records for this product across all locations

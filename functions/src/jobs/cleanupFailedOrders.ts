@@ -1,11 +1,12 @@
 import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 
 export const cleanupFailedOrders = onSchedule("0 */12 * * *", async (event) => {
   logger.info("Starting cleanup of failed orders...");
 
-  const db = admin.firestore();
+  const db = getFirestore("default");
 
   // Calculate the timestamp for 45 minutes ago
   const cutoffTimeMs = Date.now() - 45 * 60 * 1000;

@@ -1,5 +1,4 @@
-import * as admin from "firebase-admin";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, getFirestore } from "firebase-admin/firestore";
 
 const COLLECTION_ORDERS = "orders";
 const COLLECTION_PRODUCTS = "products";
@@ -44,20 +43,20 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   const [ordersSnap, inventorySnap, bankSnap, invSnap, cashSnap, statusSnap] = await Promise.all([
-    admin.firestore().collection(COLLECTION_ORDERS)
+    getFirestore("default").collection(COLLECTION_ORDERS)
       .where("paymentStatus", "==", "Paid")
       .where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo))
       .get(),
-    admin.firestore().collection(COLLECTION_INVENTORY).get(),
-    admin.firestore().collection("bank_accounts").get(),
-    admin.firestore().collection("supplier_invoices").where("status", "!=", "Paid").get(),
-    admin.firestore().collection("expenses").where("isDeleted", "==", false).where("status", "==", "APPROVED").where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get(),
-    admin.firestore().collection(COLLECTION_ORDERS).where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
+    getFirestore("default").collection(COLLECTION_INVENTORY).get(),
+    getFirestore("default").collection("bank_accounts").get(),
+    getFirestore("default").collection("supplier_invoices").where("status", "!=", "Paid").get(),
+    getFirestore("default").collection("expenses").where("isDeleted", "==", false).where("status", "==", "APPROVED").where("date", ">=", Timestamp.fromDate(ninetyDaysAgo)).get(),
+    getFirestore("default").collection(COLLECTION_ORDERS).where("createdAt", ">=", Timestamp.fromDate(ninetyDaysAgo)).get()
   ]);
 
   const productIds = Array.from(new Set(inventorySnap.docs.map(d => d.data().productId)));
   const productsSnapList = await Promise.all(
-    productIds.map(id => admin.firestore().collection(COLLECTION_PRODUCTS).doc(id).get())
+    productIds.map(id => getFirestore("default").collection(COLLECTION_PRODUCTS).doc(id).get())
   );
   const productMap = new Map(productsSnapList.map(d => [d.id, d.data()]));
 
@@ -91,7 +90,7 @@ export const getNeuralRawContext = async (): Promise<NeuralContext> => {
 };
 
 const getSalesByRange = async (start: Date, end: Date) => {
-  const snapshot = await admin.firestore()
+  const snapshot = await getFirestore("default")
     .collection(COLLECTION_ORDERS)
     .where("createdAt", ">=", Timestamp.fromDate(start))
     .where("createdAt", "<=", Timestamp.fromDate(end))
@@ -162,7 +161,7 @@ export const getHistoricalSales = async (days?: number): Promise<HistoricalPoint
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - lookback);
 
-  const query = admin.firestore()
+  const query = getFirestore("default")
     .collection(COLLECTION_ORDERS)
     .where("paymentStatus", "==", "Paid")
     .where("createdAt", ">=", Timestamp.fromDate(start));
@@ -203,7 +202,7 @@ export const getCurrentMonthActualSales = async (): Promise<number> => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-  const snap = await admin.firestore()
+  const snap = await getFirestore("default")
     .collection(COLLECTION_ORDERS)
     .where("paymentStatus", "==", "Paid")
     .where("createdAt", ">=", Timestamp.fromDate(monthStart))
@@ -277,7 +276,7 @@ export const analyzeNeuralCustomerRetention = (ctx: NeuralContext) => {
 
 export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14, predictiveVelocityMap?: Record<string, number>) => {
   const velocityMap: Record<string, number> = predictiveVelocityMap || {};
-  
+
   // Only calculate historical fallback if predictive data is missing
   if (!predictiveVelocityMap) {
     ctx.orders90d.forEach(order => {
@@ -312,7 +311,7 @@ export const analyzeNeuralStockRisks = (ctx: NeuralContext, daysToForecast = 14,
     } else if (velocity > 0 && item.quantity < projectedDemand) {
       const pData = ctx.productMap.get(item.productId);
       const daysRemaining = Math.max(0, Math.floor(item.quantity / velocity));
-      
+
       risks.push({
         productId: item.productId,
         name: pData?.name || item.name || "Unknown Product",

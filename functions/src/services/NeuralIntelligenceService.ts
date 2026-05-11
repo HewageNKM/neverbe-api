@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import { getProModel } from "./AIService";
 import { generateSalesForecast } from "./TFService";
 import {
@@ -26,7 +27,7 @@ const SETTINGS_KEY = "neural_config";
  */
 async function createAdminNotification(type: string, title: string, message: string, metadata: any = {}) {
   try {
-    const db = admin.firestore();
+    const db = getFirestore("default");
     // Simple hash check - avoid sending identical message within 24h
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -54,7 +55,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
   try {
     // 0. Cache Guard (Soft Refresh Optimization)
-    const cacheDoc = await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
+    const cacheDoc = await getFirestore("default").collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
     const lastUpdate = cacheDoc.data()?.updatedAt?.toDate() || new Date(0);
     const minsSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60);
 
@@ -66,7 +67,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     console.log("[NeuralCore] Orchestrating global analysis (Force/Hard Refresh)...");
 
     // 1. Fetch Dynamic Neural Configuration
-    const settingsDoc = await admin.firestore().collection(SETTINGS_COLLECTION).doc(SETTINGS_KEY).get();
+    const settingsDoc = await getFirestore("default").collection(SETTINGS_COLLECTION).doc(SETTINGS_KEY).get();
     const config = settingsDoc.data() || {
       historicalRunway: 1095, // 3 Years (365 * 3)
       forecastWindow: 14,
@@ -94,7 +95,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
       : [];
 
     if (forecastOnly.length > 0) {
-      await admin.firestore()
+      await getFirestore("default")
         .collection(CACHE_COLLECTION).doc(CACHE_KEY)
         .collection(FORECAST_SNAPSHOTS).doc(today)
         .set({
@@ -108,7 +109,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     // 3c. Load Past Forecast Snapshots for Real vs AI Overlay
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const pastSnapshots = await admin.firestore()
+    const pastSnapshots = await getFirestore("default")
       .collection(CACHE_COLLECTION).doc(CACHE_KEY)
       .collection(FORECAST_SNAPSHOTS)
       .where("generatedAt", ">=", thirtyDaysAgo.toISOString())
@@ -281,7 +282,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     if (heuristic) {
       briefing = heuristic;
     } else {
-      const cacheDoc = await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
+      const cacheDoc = await getFirestore("default").collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
       const cachedBriefing = cacheDoc.data()?.data?.briefing;
       const lastLLMTime = cacheDoc.data()?.lastLLMUpdateTime?.toDate() || new Date(0);
       const hoursSinceLLM = (Date.now() - lastLLMTime.getTime()) / (1000 * 60 * 60);
@@ -294,7 +295,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
           const prompt = `Health ${healthScore}, Sales Drift ${salesVelocity}%, Risks ${neuralRisks.length}. Resilience ${financialResilience}%`;
           const result = await model.generateContent(prompt);
           briefing = result.response.text();
-          await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({ lastLLMUpdateTime: admin.firestore.FieldValue.serverTimestamp() });
+          await getFirestore("default").collection(CACHE_COLLECTION).doc(CACHE_KEY).update({ lastLLMUpdateTime: admin.firestore.FieldValue.serverTimestamp() });
         } catch (err: any) {
           console.error("[NeuralCore] LLM Generation Failed. Falling back to Enhanced Heuristic.", err.message);
 
@@ -350,7 +351,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
     expiryDate.setHours(expiryDate.getHours() + 24);
     const expiryTimestamp = admin.firestore.Timestamp.fromDate(expiryDate);
 
-    await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).set({
+    await getFirestore("default").collection(CACHE_COLLECTION).doc(CACHE_KEY).set({
       data: finalFeed,
       savedTargets: savedTargets,
       expiry: expiryTimestamp,
@@ -364,8 +365,8 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
 
       // Only notify if it's been 12h or if we have critical new items
       if (hoursSinceLast >= 12 && items.length > 0) {
-        const batch = admin.firestore().batch();
-        const notifyCol = admin.firestore().collection("erp_notifications");
+        const batch = getFirestore("default").batch();
+        const notifyCol = getFirestore("default").collection("erp_notifications");
 
         // Take top 3 critical interventions to avoid flooding
         items.filter(i => i.priority === 'CRITICAL').slice(0, 3).forEach(item => {
@@ -381,7 +382,7 @@ export const updateNeuralCoreFeed = async (forceRefresh: boolean = false) => {
         });
 
         await batch.commit();
-        await admin.firestore().collection(CACHE_COLLECTION).doc(CACHE_KEY).update({
+        await getFirestore("default").collection(CACHE_COLLECTION).doc(CACHE_KEY).update({
           lastSystemNotificationAt: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log(`[NeuralCore] System-wide push notifications dispatched.`);
