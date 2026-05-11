@@ -1,29 +1,15 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { settingsRepository } from "@/repositories/SettingsRepositories";
 
-const COLLECTION = "app_settings";
+/**
+ * SettingService - Business logic for app settings
+ * Delegates data access to settingsRepository
+ */
 
 export const getERPSettings = async () => {
-  try {
-    const settingDoc = await adminFirestore
-      .collection(COLLECTION)
-      .doc("erp_settings")
-      .get();
-    return settingDoc.data();
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
+  return await settingsRepository.getErpSettings();
 };
 
 export const updateERPSettings = async (data: any) => {
-  try {
-    await adminFirestore
-      .collection(COLLECTION)
-      .doc("erp_settings")
-      .set(data, { merge: true });
-    return { success: true };
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
+  await settingsRepository.updateErpSettings(data);
+  return { success: true };
 };

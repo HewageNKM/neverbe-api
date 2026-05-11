@@ -1,10 +1,13 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
-import admin from "firebase-admin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { Product } from "@/model/Product";
 import { Order } from "@/model/Order";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
+import { inventoryRepository } from "@/repositories/InventoryRepository";
+import { productRepository } from "@/repositories/ProductRepository";
+import { orderRepository } from "@/repositories/OrderRepository";
+import { posCartRepository } from "@/repositories/PosCartRepository";
+import { stockRepository, pettyCashRepository } from "@/repositories/FinanceRepositories";
+import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
 
 // ================================
 // 🔹 DATA TYPES
@@ -46,227 +49,117 @@ export interface StockInventoryItem {
 // 🔹 POS CART OPERATIONS
 // ================================
 
-// ✅ Get all items in POS cart
-// ✅ Get all items in POS cart (scoped to user mandatory)
-export const getPosCart = async (
-  stockId: string,
-  userId: string,
-): Promise<POSCartItem[]> => {
-  let query = adminFirestore
-    .collection("pos_cart")
-    .orderBy("createdAt", "desc");
-
-  if (stockId) {
-    query = query.where("stockId", "==", stockId);
-  }
-  if (userId) {
-    query = query.where("userId", "==", userId);
-  }
-
-  const snap = await query.get();
-  return snap.docs.map((d) => d.data() as POSCartItem);
+export const getPosCart = async (stockId: string, userId: string): Promise<POSCartItem[]> => {
+  return await posCartRepository.findByStockAndUser(stockId, userId);
 };
 
-// ✅ Add item to POS cart using InventoryItem info
 export const addItemToPosCart = async (item: POSCartItem, userId: string) => {
-  const posCart = adminFirestore.collection("pos_cart");
+  await posCartRepository.runTransaction(async (tx) => {
+    // 1️⃣ Deduct stock using repository
+    await inventoryRepository.deductStock(
+      tx,
+      item.itemId,
+      item.variantId,
+      item.size,
+      item.stockId,
+      item.quantity
+    );
 
-  await adminFirestore.runTransaction(async (tx) => {
-    // 1️⃣ Fetch inventory item using productId, variantId, size, stockId
-    const inventoryQuery = adminFirestore
-      .collection("stock_inventory")
-      .where("productId", "==", item.itemId)
-      .where("variantId", "==", item.variantId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .limit(1);
-    
-    const inventorySnap = await tx.get(inventoryQuery);
-
-    if (inventorySnap.empty)
-      throw new AppError("Item not found in inventory", 404);
-
-    const inventoryRef = inventorySnap.docs[0].ref;
-    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
-
-    // 3️⃣ Deduct stock (real stock allowed to go negative for POS)
-    const newInvQty = inventoryData.quantity - item.quantity;
-    tx.update(inventoryRef, { quantity: newInvQty });
-
-    // 4️⃣ Add to POS cart
-    tx.set(posCart.doc(), {
-      ...item,
-      userId: userId || "anonymous",
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    // 2️⃣ Add to POS cart using repository
+    await posCartRepository.addItem(tx, item, userId);
   });
 };
 
-// ✅ Remove item from POS cart and restock
 export const removeFromPosCart = async (item: POSCartItem, userId: string) => {
-  const posCart = adminFirestore.collection("pos_cart");
+  await posCartRepository.runTransaction(async (tx) => {
+    // 1️⃣ Fetch cart item
+    const cartDoc = await posCartRepository.findSpecificItem(tx, {
+      itemId: item.itemId,
+      variantId: item.variantId,
+      size: item.size,
+      stockId: item.stockId,
+      userId: userId
+    });
 
-  await adminFirestore.runTransaction(async (tx) => {
-    // 1️⃣ Fetch inventory item
-    const inventoryQuery = adminFirestore
-      .collection("stock_inventory")
-      .where("productId", "==", item.itemId)
-      .where("variantId", "==", item.variantId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .limit(1);
-    
-    const inventorySnap = await tx.get(inventoryQuery);
+    if (!cartDoc) throw new AppError("Cart item not found", 404);
 
-    if (inventorySnap.empty)
-      throw new AppError("Item not found in inventory", 404);
+    const cartItemData = cartDoc.data() as POSCartItem;
 
-    const inventoryRef = inventorySnap.docs[0].ref;
-    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
+    // 2️⃣ Restore stock using repository
+    await inventoryRepository.restoreStock(
+      tx,
+      item.itemId,
+      item.variantId,
+      item.size,
+      item.stockId,
+      cartItemData.quantity
+    );
 
-    const cartQuery = posCart
-      .where("itemId", "==", item.itemId)
-      .where("variantId", "==", item.variantId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .where("userId", "==", userId);
-
-    const cartSnapshot = await tx.get(cartQuery.limit(1));
-
-    if (cartSnapshot.empty) {
-      throw new AppError("Cart item not found", 404);
-    }
-
-    const cartItemData = cartSnapshot.docs[0].data() as POSCartItem;
-
-    // 4️⃣ Restore stock using the actual known cart item quantity
-    const newInvQty = inventoryData.quantity + cartItemData.quantity;
-    tx.update(inventoryRef, { quantity: newInvQty });
-
-    // 5️⃣ Delete item from POS cart
-    tx.delete(cartSnapshot.docs[0].ref);
+    // 3️⃣ Delete item from POS cart
+    await posCartRepository.delete(cartDoc.id, tx);
   });
 };
 
-// ✅ Clear entire POS cart (scoped to user/stock mandatory)
-export const clearPosCart = async (
-  stockId: string,
-  userId: string,
-  restock: boolean = true,
-) => {
+export const clearPosCart = async (stockId: string, userId: string, restock: boolean = true) => {
   try {
-    let query: admin.firestore.Query = adminFirestore.collection("pos_cart").limit(500);
-
-    if (stockId) query = query.where("stockId", "==", stockId);
-    if (userId) query = query.where("userId", "==", userId);
-
-    const snap = await query.get();
+    const snap = await posCartRepository.findForClearing(stockId, userId);
     if (snap.empty) return;
 
-    const batch = adminFirestore.batch();
-    const items = snap.docs.map((d) => ({ ref: d.ref, data: d.data() as POSCartItem }));
-
-    if (restock) {
-      for (const item of items) {
-        // Find inventory item
-        const invQuery = await adminFirestore
-          .collection("stock_inventory")
-          .where("productId", "==", item.data.itemId)
-          .where("variantId", "==", item.data.variantId)
-          .where("size", "==", item.data.size)
-          .where("stockId", "==", item.data.stockId)
-          .limit(1)
-          .get();
-
-        if (!invQuery.empty) {
-          const invRef = invQuery.docs[0].ref;
-          const invData = invQuery.docs[0].data();
-          batch.update(invRef, {
-            quantity: (invData.quantity || 0) + item.data.quantity,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
+    await posCartRepository.runBatch(async (batch) => {
+      if (restock) {
+        for (const doc of snap.docs) {
+          const item = doc.data() as POSCartItem;
+          await inventoryRepository.restoreStock(
+            batch,
+            item.itemId,
+            item.variantId,
+            item.size,
+            item.stockId,
+            item.quantity
+          );
         }
       }
-    }
-
-    // Batch delete items
-    items.forEach((item) => batch.delete(item.ref));
-
-    await batch.commit();
-    console.log(
-      `POS cart cleared ${restock ? "and stock restored" : "(order complete)"} for user:`,
-      userId,
-    );
+      for (const doc of snap.docs) {
+        await posCartRepository.delete(doc.id, batch);
+      }
+    });
   } catch (error) {
     console.error("clearPosCart failed:", error);
     throw error;
   }
 };
 
-// ✅ Update cart item quantity
-export const updatePosCartItemQuantity = async (
-  item: POSCartItem,
-  newQuantity: number,
-) => {
-  const posCart = adminFirestore.collection("pos_cart");
-
-  await adminFirestore.runTransaction(async (tx) => {
+export const updatePosCartItemQuantity = async (item: POSCartItem, newQuantity: number) => {
+  await posCartRepository.runTransaction(async (tx) => {
     // 1️⃣ Find the cart item
-    const cartQuery = posCart
-      .where("itemId", "==", item.itemId)
-      .where("variantId", "==", item.variantId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .limit(1);
+    const cartDoc = await posCartRepository.findSpecificItem(tx, {
+      itemId: item.itemId,
+      variantId: item.variantId,
+      size: item.size,
+      stockId: item.stockId,
+      userId: (item as any).userId // userId should be in the item or passed
+    });
 
-    const cartDocSnap = await tx.get(cartQuery);
+    if (!cartDoc) throw new AppError("Cart item not found", 404);
 
-    if (cartDocSnap.empty) throw new AppError("Cart item not found", 404);
-
-    const cartDoc = cartDocSnap.docs[0];
     const currentItem = cartDoc.data() as POSCartItem;
     const quantityDiff = newQuantity - currentItem.quantity;
 
-    // 2️⃣ Fetch inventory item
-    const inventoryQuery = adminFirestore
-      .collection("stock_inventory")
-      .where("productId", "==", item.itemId)
-      .where("variantId", "==", item.variantId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .limit(1);
-    
-    const inventorySnap = await tx.get(inventoryQuery);
+    // 2️⃣ Update inventory
+    await inventoryRepository.deductStock(
+      tx,
+      item.itemId,
+      item.variantId,
+      item.size,
+      item.stockId,
+      quantityDiff
+    );
 
-    if (inventorySnap.empty)
-      throw new AppError("Item not found in inventory", 404);
+    // 3️⃣ Update product global stock using repository
+    await productRepository.updateTotalStock(tx, item.itemId, quantityDiff);
 
-    const inventoryRef = inventorySnap.docs[0].ref;
-    const inventoryData = inventorySnap.docs[0].data() as InventoryItem;
-
-    // 3️⃣ Fetch product global stock
-    const productRef = adminFirestore.collection("products").doc(item.itemId);
-    const productSnap = await tx.get(productRef);
-
-    // --- ALL READS DONE, START WRITES ---
-
-    // 4️⃣ Update inventory (deduct if increasing, restore if decreasing, dont go minus)
-    const newInvQty = inventoryData.quantity - quantityDiff;
-    tx.update(inventoryRef, { quantity: newInvQty });
-
-    // 5️⃣ Update product global stock
-    if (productSnap.exists) {
-      const prodData = productSnap.data() as Product;
-      const newTotalStock = (prodData.totalStock ?? 0) - quantityDiff;
-      tx.update(productRef, {
-        totalStock: newTotalStock,
-        inStock: newTotalStock > 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // 6️⃣ Update cart item quantity
-    tx.update(cartDoc.ref, { quantity: newQuantity });
+    // 4️⃣ Update cart item quantity
+    await posCartRepository.update(cartDoc.id, { quantity: newQuantity }, tx);
   });
 };
 
@@ -274,209 +167,52 @@ export const updatePosCartItemQuantity = async (
 // 🔹 POS PRODUCT OPERATIONS
 // ================================
 
-// ✅ Get products available at a specific stock location
-export const getProductsByStock = async (
-  stockId: string,
-  page: number = 1,
-  size: number = 20,
-): Promise<Product[]> => {
-  console.log(`Fetching products for stockId: ${stockId}`);
-
-  try {
-    if (!stockId) return [];
-
-    // 1️⃣ Fetch stock inventory items for the given stockId
-    const stockSnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .get();
-
-    if (stockSnapshot.empty) {
-      console.log("No inventory found for stockId:", stockId);
-      return [];
-    }
-
-    // 2️⃣ Extract unique productIds
-    const productIdsSet = new Set<string>();
-    stockSnapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      if (data.productId) {
-        productIdsSet.add(data.productId);
-      }
-    });
-
-    const productIds = Array.from(productIdsSet);
-    if (productIds.length === 0) return [];
-
-    // 3️⃣ Pagination
-    const offset = (page - 1) * size;
-    const paginatedProductIds = productIds.slice(offset, offset + size);
-
-    if (paginatedProductIds.length === 0) return [];
-
-    // 4️⃣ Fetch products from `products` collection
-    const productsCollection = adminFirestore.collection("products");
-    const productsSnapshot = await productsCollection
-      .where("isDeleted", "==", false)
-      .where("status", "==", true)
-      .where("id", "in", paginatedProductIds)
-      .get();
-
-    const products: Product[] = productsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Product),
-    }));
-
-    console.log("Products retrieved:", products.length);
-    return products;
-  } catch (error) {
-    console.error("Error retrieving inventory products:", error);
-    throw error;
-  }
+export const getProductsByStock = async (stockId: string, page: number = 1, size: number = 20): Promise<Product[]> => {
+  if (!stockId) return [];
+  const productIds = await inventoryRepository.findProductIdsByStock(stockId);
+  if (productIds.length === 0) return [];
+  return await productRepository.findByIds(productIds.slice((page - 1) * size, page * size));
 };
 
-// ✅ Search products by name with stock filtering using native Firestore
-export const searchProductsByStock = async (
-  stockId: string,
-  query: string,
-): Promise<Product[]> => {
-  try {
-    if (!stockId || !query) return [];
+export const searchProductsByStock = async (stockId: string, query: string): Promise<Product[]> => {
+  if (!stockId || !query) return [];
+  const productIds = await inventoryRepository.findProductIdsByStock(stockId);
+  if (productIds.length === 0) return [];
 
-    // 1️⃣ Fetch stock inventory items for the given stockId
-    const stockSnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .get();
-
-    if (stockSnapshot.empty) return [];
-
-    // 2️⃣ Extract unique productIds
-    const productIdsSet = new Set<string>();
-    stockSnapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      if (data.productId) {
-        productIdsSet.add(data.productId);
-      }
-    });
-
-    const productIds = Array.from(productIdsSet);
-    if (productIds.length === 0) return [];
-
-    let fsQuery: any = adminFirestore.collection("products").where("status", "==", true).where("isDeleted", "==", false);
-    if (query) {
-      fsQuery = fsQuery.where("nameLower", ">=", query.toLowerCase()).where("nameLower", "<=", query.toLowerCase() + "\uf8ff");
-    }
-    const productsSnapshot = await fsQuery.limit(1000).get();
-
-    // 4️⃣ Filter results to only include those present in the physical stock location
-    const products: Product[] = productsSnapshot.docs
-      .filter((doc) => productIds.includes(doc.id))
-      .map((doc) => {
-        return {
-          id: doc.id,
-          ...doc.data(),
-        } as Product;
-      });
-
-    return products;
-  } catch (error) {
-    console.error("Error searching products:", error);
-    throw error;
-  }
+  // Search filtered products (Business Logic stays in Service)
+  const products = await productRepository.searchActive(query, 1000);
+  return products.filter((p) => productIds.includes(p.id));
 };
 
-// ✅ Get stock inventory for specific product/variant/size
-export const getStockInventory = async (
-  stockId: string,
-  productId: string,
-  variantId: string,
-  size: string,
-): Promise<StockInventoryItem | null> => {
-  try {
-    const querySnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .where("productId", "==", productId)
-      .where("variantId", "==", variantId)
-      .where("size", "==", size)
-      .limit(1)
-      .get();
-
-    if (querySnapshot.empty) {
-      throw new AppError("Inventory item not found", 404);
-    }
-
-    return querySnapshot.docs[0].data() as StockInventoryItem;
-  } catch (error) {
-    console.error("Error fetching stock inventory:", error);
-    throw error;
-  }
+export const getStockInventory = async (stockId: string, productId: string, variantId: string, size: string): Promise<InventoryItem | null> => {
+  const item = await inventoryRepository.findItem(stockId, productId, variantId, size);
+  if (!item) throw new AppError("Inventory item not found", 404);
+  return item;
 };
 
-// ✅ Get all inventory for a product at a stock location
-export const getProductInventoryByStock = async (
-  stockId: string,
-  productId: string,
-): Promise<StockInventoryItem[]> => {
-  try {
-    const querySnapshot = await adminFirestore
-      .collection("stock_inventory")
-      .where("stockId", "==", stockId)
-      .where("productId", "==", productId)
-      .get();
-
-    return querySnapshot.docs.map((doc) => doc.data() as StockInventoryItem);
-  } catch (error) {
-    console.error("Error fetching product inventory:", error);
-    throw error;
-  }
+export const getProductInventoryByStock = async (stockId: string, productId: string): Promise<InventoryItem[]> => {
+  return await inventoryRepository.findByProductAndStock(productId, stockId);
 };
 
-// ✅ Get available stocks list
-export const getAvailableStocks = async (): Promise<
-  { id: string; name: string; label: string }[]
-> => {
-  try {
-    const stocksSnapshot = await adminFirestore
-      .collection("stocks")
-      .where("status", "==", true)
-      .get();
-
-    return stocksSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      name: doc.data().name || doc.id,
-      label: doc.data().label || doc.data().name || doc.id,
-    }));
-  } catch (error) {
-    console.error("Error fetching stocks:", error);
-    throw error;
-  }
+export const getAvailableStocks = async () => {
+  return await stockRepository.findActiveStocks();
 };
 
 // ================================
 // 🔹 POS ORDER OPERATIONS
 // ================================
 
-// ✅ Create a new POS Order and Update Stock
 export const createPOSOrder = async (order: Partial<Order>, userId: string) => {
   if (!order.orderId) throw new AppError("Order ID is required", 400);
   if (!order.items?.length) throw new AppError("Order items are required", 400);
   if (!order.stockId) throw new AppError("Stock ID is required", 400);
 
-  const orderRef = adminFirestore.collection("orders").doc(order.orderId);
-  const now = admin.firestore.Timestamp.now();
-
   // Fetch store name if not provided
   let storeName = order.storeName;
   if (!storeName && order.stockId) {
-    const stockDoc = await adminFirestore
-      .collection("stocks")
-      .doc(order.stockId)
-      .get();
-    if (stockDoc.exists) {
-      storeName =
-        stockDoc.data()?.name || stockDoc.data()?.label || order.stockId;
+    const stockData = await stockRepository.findById(order.stockId);
+    if (stockData) {
+      storeName = stockData.name || stockData.label || order.stockId;
     }
   }
 
@@ -486,59 +222,27 @@ export const createPOSOrder = async (order: Partial<Order>, userId: string) => {
     sourceName: "POS",
     storeName: storeName || "Physical Store",
     userId: userId || order.userId || null,
-    createdAt: now,
-    updatedAt: now,
   } as Order;
 
   try {
-    const productRefs = order.items.map((i) =>
-      adminFirestore.collection("products").doc(i.itemId),
-    );
-    const productSnaps = await adminFirestore.getAll(...productRefs);
-    const productMap = new Map(
-      productSnaps.map((snap) => [snap.id, snap.data() as Product]),
-    );
+    const productIds = order.items.map((i) => i.itemId);
+    const products = await productRepository.findByIds(productIds);
+    const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // Set bPrice on items from server-side product data
-    order.items = order.items.map((item) => {
-      const prod = productMap.get(item.itemId);
-      return {
-        ...item,
-        bPrice: prod?.buyingPrice || 0,
-      };
-    });
+    order.items = order.items.map((item) => ({
+      ...item,
+      bPrice: productMap.get(item.itemId)?.buyingPrice || 0,
+    }));
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const batch = adminFirestore.batch();
-        // NOTE: Stock is already deducted when adding items to the POS Cart.
-        // POS Checkout simply records the order and clears the cart without double-deduction.
-        batch.set(orderRef, orderData);
-        await batch.commit();
-
-        console.log(
-          `🏬 Store order ${order.orderId} committed (attempt ${attempt})`,
-        );
-        break;
-      } catch (err: any) {
-        if (attempt === 3) throw err;
-        console.warn(`⚠️ Store order retry #${attempt}: ${err.message}`);
-        await new Promise((r) => setTimeout(r, attempt * 200));
-      }
-    }
-
+    await orderRepository.saveWithRetry(order.orderId, orderData);
     await clearPosCart(order.stockId, userId, false);
 
     // Integrity Update
     const { updateOrAddOrderHash } = await import("./IntegrityService");
-    const orderForHashSnap = await orderRef.get();
-    const orderForHash = orderForHashSnap.data();
-    if (orderForHash) await updateOrAddOrderHash(orderForHash);
+    const savedOrder = await orderRepository.findById(order.orderId);
+    if (savedOrder) await updateOrAddOrderHash(savedOrder);
 
-    return {
-      ...orderData,
-      createdAt: new Date().toISOString(),
-    };
+    return { ...orderData, createdAt: new Date().toISOString() };
   } catch (error) {
     console.error("Error creating POS order:", error);
     throw error;
@@ -549,93 +253,25 @@ export const createPOSOrder = async (order: Partial<Order>, userId: string) => {
 // 🔹 PETTY CASH OPERATIONS
 // ================================
 
-// ✅ Get Petty Cash Transactions
 export const getPettyCash = async (limit: number = 10) => {
-  try {
-    const snapshot = await adminFirestore
-      .collection("petty_cash")
-      .orderBy("createdAt", "desc")
-      .limit(limit)
-      .get();
-
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-    }));
-  } catch (error) {
-    console.error("Error fetching petty cash:", error);
-    throw error;
-  }
+  return await pettyCashRepository.findRecent(limit);
 };
 
-// ✅ Add Petty Cash Transaction
 export const addPettyCashTransaction = async (data: any) => {
-  try {
-    const pcId = `pc-${nanoid(8)}`;
-    const ref = adminFirestore.collection("petty_cash").doc(pcId);
-    const transaction = {
-      ...data,
-      id: pcId,
-      createdAt: Timestamp.now(),
-    };
-    await ref.set(transaction);
-    return transaction;
-  } catch (error) {
-    console.error("Error adding petty cash transaction:", error);
-    throw error;
-  }
+  const pcId = `pc-${nanoid(8)}`;
+  return await pettyCashRepository.create(pcId, data);
 };
 
 // ================================
 // 🔹 PAYMENT METHOD OPERATIONS
 // ================================
 
-// ✅ Get Payment Methods
 export const getPaymentMethods = async () => {
-  try {
-    const snapshot = await adminFirestore
-      .collection("payment_methods")
-      .where("isDeleted", "!=", true)
-      .where("status", "==", true)
-      .where("available", "array-contains", "Store")
-      .get();
-
-    if (snapshot.empty) return [];
-
-    return snapshot.docs.map((doc) => ({
-      paymentId: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate().toISOString(),
-    }));
-  } catch (error) {
-    console.error("Error fetching payment methods:", error);
-    throw error;
-  }
+  return await paymentMethodRepository.findForStore();
 };
 
 export const getOrderByOrderId = async (orderId: string) => {
-  try {
-    const snapshot = await adminFirestore
-      .collection("orders")
-      .where("orderId", "==", orderId)
-      .where("from", "==", "Store")
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      throw new AppError(`Order with Order ID ${orderId} not found`, 404);
-    }
-
-    return {
-      orderId: snapshot.docs[0].id,
-      ...snapshot.docs[0].data(),
-      createdAt: snapshot.docs[0].data().createdAt?.toDate().toISOString(),
-      updatedAt: snapshot.docs[0].data().updatedAt?.toDate().toISOString(),
-    };
-  } catch (error) {
-    console.error("Error fetching order by order ID:", error);
-    throw error;
-  }
+  const order = await orderRepository.findByOrderId(orderId);
+  if (!order) throw new AppError(`Order with Order ID ${orderId} not found`, 404);
+  return order;
 };

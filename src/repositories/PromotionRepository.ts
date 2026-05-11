@@ -120,7 +120,66 @@ export class PromotionRepository extends BaseRepository<Promotion> {
       updatedAt: new Date(),
     });
   }
+
+  /**
+   * Increment usage count for a promotion
+   */
+  async incrementUsageCount(id: string): Promise<void> {
+    const admin = await import("firebase-admin");
+    await this.collection.doc(id).update({
+      usageCount: admin.firestore.FieldValue.increment(1),
+      updatedAt: new Date(),
+    });
+  }
+  /**
+   * Find paginated promotions
+   */
+  async findPaginated(options: {
+    page?: number;
+    size?: number;
+    filterStatus?: string;
+    search?: string;
+    type?: string;
+  }): Promise<{ dataList: Promotion[]; total: number }> {
+    const { page = 1, size = 20, filterStatus, search, type } = options;
+    let query = this.collection.where("isDeleted", "==", false);
+
+    if (filterStatus && filterStatus !== "all") {
+      query = query.where("isActive", "==", filterStatus === "ACTIVE" || filterStatus === "true");
+    }
+    if (type && type !== "all") {
+      query = query.where("type", "==", type);
+    }
+    if (search) {
+      query = query.where("name", ">=", search).where("name", "<=", search + "\uf8ff");
+    }
+
+    const total = (await query.count().get()).data().count;
+    const snapshot = await query
+      .orderBy("createdAt", "desc")
+      .offset((page - 1) * size)
+      .limit(size)
+      .get();
+
+    return {
+      dataList: snapshot.docs.map(doc => this.serializePromotion(doc)),
+      total
+    };
+  }
+
+  /**
+   * Get user usage count for a promotion
+   */
+  async getUserUsageCount(promoId: string, userId: string): Promise<number> {
+    const snapshot = await this.collection.firestore
+      .collection("orders")
+      .where("userId", "==", userId)
+      .where("appliedPromotionIds", "array-contains", promoId)
+      .where("status", "!=", "CANCELLED")
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
 }
 
-// Singleton instance
 export const promotionRepository = new PromotionRepository();

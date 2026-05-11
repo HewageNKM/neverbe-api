@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSizes, createSize } from "@/services/SizeService";
-import { authorizeRequest } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export const GET = async (req: Request) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { searchParams } = new URL(req.url);
     const page = Number(searchParams.get("page") || 1);
@@ -17,29 +15,28 @@ export const GET = async (req: Request) => {
     const data = await getSizes({ page, size, search, status });
     return NextResponse.json(data);
   } catch (err: any) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const formData = await req.formData();
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const sizeData = JSON.parse(rawData);
     if (!sizeData.name || !sizeData.status)
-      return errorResponse("Name and status are required", 400);
+      return NextResponse.json({ success: false, message: "Name and status are required" }, { status: 400 });
 
     const result = await createSize(sizeData);
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };

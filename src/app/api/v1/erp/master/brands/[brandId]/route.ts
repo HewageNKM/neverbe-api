@@ -4,8 +4,7 @@ import {
   updateBrand,
   deleteBrand,
 } from "@/services/BrandService";
-import { authorizeRequest } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export const GET = async (
   _req: Request,
@@ -13,13 +12,12 @@ export const GET = async (
 ) => {
   try {
     const { brandId } = await params;
-    const user = await authorizeRequest(_req);
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(_req, "view_master_data");
 
     const result = await getBrandById(brandId);
     return NextResponse.json(result);
   } catch (err) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };
 
@@ -29,15 +27,14 @@ export const PUT = async (
 ) => {
   try {
     const { brandId } = await params;
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const formData = await req.formData();
     const logo = formData.get("logo") as File | null;
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const brandData = JSON.parse(rawData);
@@ -45,7 +42,7 @@ export const PUT = async (
     const result = await updateBrand(brandId, brandData, logo || undefined);
     return NextResponse.json(result);
   } catch (err) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };
 
@@ -55,12 +52,11 @@ export const DELETE = async (
 ) => {
   try {
     const { brandId } = await params;
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const result = await deleteBrand(brandId);
     return NextResponse.json(result);
   } catch (err) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };

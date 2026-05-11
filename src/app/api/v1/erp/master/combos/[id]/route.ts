@@ -1,11 +1,10 @@
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getComboById,
   updateCombo,
   deleteCombo,
 } from "@/services/ComboService";
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 interface Props {
   params: Promise<{
@@ -16,31 +15,29 @@ interface Props {
 export const GET = async (req: NextRequest, props: Props) => {
   const params = await props.params;
   try {
-    const user = await authorizeRequest(req, "view_combos");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_combos");
 
     const combo = await getComboById(params.id);
     if (!combo) {
-      return errorResponse("Combo not found", 404);
+      return NextResponse.json({ success: false, message: "Combo not found" }, { status: 404 });
     }
     return NextResponse.json(combo);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const PUT = async (req: NextRequest, props: Props) => {
   const params = await props.params;
   try {
-    const user = await authorizeRequest(req, "update_combos");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "update_combos");
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const comboData = JSON.parse(rawData);
@@ -48,19 +45,18 @@ export const PUT = async (req: NextRequest, props: Props) => {
     const updated = await updateCombo(params.id, comboData, file || undefined);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const DELETE = async (req: NextRequest, props: Props) => {
   const params = await props.params;
   try {
-    const user = await authorizeRequest(req, "delete_combos");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "delete_combos");
 
     const result = await deleteCombo(params.id);
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

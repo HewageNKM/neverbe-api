@@ -1,10 +1,6 @@
-// app/api/v2/master/products/[productId]/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
-import { adminFirestore } from "@/firebase/firebaseAdmin";
-import { authorizeRequest } from "@/services/AuthService";
-import { getProductById, updateProduct } from "@/services/ProductService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
+import { getProductById, updateProduct, deleteProduct } from "@/services/ProductService";
 
 interface RouteParams {
   params: Promise<{
@@ -14,19 +10,14 @@ interface RouteParams {
 
 export const GET = async (req: NextRequest, { params }: RouteParams) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { productId } = await params;
     const product = await getProductById(productId);
 
-    if (!product) {
-      return errorResponse("Product not found", 404);
-    }
-
     return NextResponse.json(product);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -35,8 +26,7 @@ export const GET = async (req: NextRequest, { params }: RouteParams) => {
  */
 export const PUT = async (req: NextRequest, { params }: RouteParams) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { productId } = await params;
     const formData = await req.formData();
@@ -45,7 +35,7 @@ export const PUT = async (req: NextRequest, { params }: RouteParams) => {
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const productData = JSON.parse(rawData);
@@ -53,7 +43,7 @@ export const PUT = async (req: NextRequest, { params }: RouteParams) => {
     const result = await updateProduct(productId, productData, file);
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -62,21 +52,14 @@ export const PUT = async (req: NextRequest, { params }: RouteParams) => {
  */
 export const DELETE = async (req: NextRequest, { params }: RouteParams) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { productId } = await params;
 
-    await adminFirestore
-      .collection("products")
-      .doc(productId)
-      .update({
-        isDeleted: true,
-        updatedAt: new Date(),
-      });
+    await deleteProduct(productId);
 
     return NextResponse.json({ message: "Product deleted successfully" });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

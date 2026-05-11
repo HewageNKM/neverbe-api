@@ -1,8 +1,9 @@
 import { adminFirestore } from "@/firebase/firebaseAdmin";
-import type {
-  Query,
-  CollectionReference,
-  DocumentSnapshot,
+import {
+  FieldValue,
+  type Query,
+  type CollectionReference,
+  type DocumentSnapshot,
 } from "firebase-admin/firestore";
 
 /**
@@ -65,9 +66,83 @@ export abstract class BaseRepository<T> {
   /**
    * Fetch a single document by ID
    */
-  protected async findDocById(id: string): Promise<DocumentSnapshot | null> {
+  async findById(id: string): Promise<T | null> {
     const doc = await this.collection.doc(id).get();
-    return doc.exists ? doc : null;
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() } as T;
+  }
+
+  /**
+   * Create a new document
+   */
+  async create(
+    id: string,
+    data: T,
+    tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch
+  ): Promise<T> {
+    const docRef = this.collection.doc(id);
+    const now = FieldValue.serverTimestamp();
+    const record = {
+      ...data,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (tx) {
+      (tx as any).set(docRef, record);
+    } else {
+      await docRef.set(record);
+    }
+    return record as any;
+  }
+
+  /**
+   * Update an existing document
+   */
+  async update(
+    id: string,
+    data: Partial<T>,
+    tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch
+  ): Promise<void> {
+    const docRef = this.collection.doc(id);
+    const updateData = {
+      ...data,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (tx) {
+      (tx as any).update(docRef, updateData);
+    } else {
+      await docRef.update(updateData);
+    }
+  }
+
+  /**
+   * Soft-delete a document
+   */
+  async softDelete(
+    id: string,
+    tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch
+  ): Promise<void> {
+    const updateData = {
+      isDeleted: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    return this.update(id, updateData as any, tx);
+  }
+
+  /**
+   * Delete a document
+   */
+  async delete(
+    id: string,
+    tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch
+  ): Promise<void> {
+    const docRef = this.collection.doc(id);
+    if (tx) {
+      tx.delete(docRef);
+    } else {
+      await docRef.delete();
+    }
   }
 
   /**
@@ -88,13 +163,46 @@ export abstract class BaseRepository<T> {
     }
 
     for (const chunk of chunks) {
-      const snapshot = await this.getActiveQuery()
+      const snapshot = await this.collection
         .where(idField, "in", chunk)
         .get();
       results.push(...snapshot.docs);
     }
 
     return results;
+  }
+
+  /**
+   * Public wrapper for findDocsByIds
+   */
+  async findByIds(ids: string[]): Promise<T[]> {
+    if (!ids.length) return [];
+    const docs = await this.findDocsByIds(ids);
+    return docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
+  }
+
+  /**
+   * Run a Firestore write batch with a callback
+   */
+  async runBatch(callback: (batch: FirebaseFirestore.WriteBatch) => Promise<void>): Promise<void> {
+    const batch = this.createBatch();
+    await callback(batch);
+    await batch.commit();
+  }
+
+  /**
+   * Get last document number for a prefix
+   */
+  protected async findLastNumber(field: string, prefix: string): Promise<string | null> {
+    const snapshot = await this.collection
+      .where(field, ">=", prefix)
+      .where(field, "<", prefix + "\uf8ff")
+      .orderBy(field, "desc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data()[field];
   }
 
   /**
@@ -112,15 +220,27 @@ export abstract class BaseRepository<T> {
   }
 
   /**
-   * Clear timestamps for client response (prevents serialization issues)
+   * Run a Firestore transaction
    */
-  protected clearTimestamps<D extends { createdAt?: any; updatedAt?: any }>(
-    data: D
-  ): D {
-    return {
-      ...data,
-      createdAt: null,
-      updatedAt: null,
-    };
+  async runTransaction<R>(
+    updateFunction: (transaction: FirebaseFirestore.Transaction) => Promise<R>
+  ): Promise<R> {
+    return adminFirestore.runTransaction(updateFunction);
+  }
+
+  /**
+   * Create a Firestore write batch
+   */
+  createBatch(): FirebaseFirestore.WriteBatch {
+    return adminFirestore.batch();
+  }
+
+  /**
+   * Find any document by collection name and ID
+   */
+  async findAnyDocument(collectionName: string, id: string): Promise<any | null> {
+    const doc = await adminFirestore.collection(collectionName).doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
   }
 }

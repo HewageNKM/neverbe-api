@@ -1,38 +1,39 @@
-import { otherRepository } from "@/repositories/OtherRepository";
+import { brandRepository } from "@/repositories/BrandRepository";
+import { categoryRepository } from "@/repositories/CategoryRepository";
+import { settingsRepository } from "@/repositories/SettingsRepositories";
+import { websiteRepository } from "@/repositories/WebsiteRepository";
 
 /**
- * OtherService - Thin wrapper over OtherRepository
- * Delegates all data access to repository layer
+ * OtherService - Business logic for miscellaneous entities
+ * Delegates data access to specialized repositories
  */
 
 /**
  * Get active brands for dropdown
  */
-export const getBrandsForDropdown = () =>
-  otherRepository.getBrandsForDropdown();
+export const getBrandsForDropdown = () => brandRepository.findForDropdown();
 
 /**
  * Get full brand objects
  */
-export const getBrands = () => otherRepository.getBrands();
+export const getBrands = () => brandRepository.findAllActive();
 
 /**
  * Get active categories for dropdown
  */
-export const getCategoriesForDropdown = () =>
-  otherRepository.getCategoriesForDropdown();
+export const getCategoriesForDropdown = () => categoryRepository.findForDropdown();
 
 /**
  * Get ERP settings
  */
-export const getSettings = () => otherRepository.getSettings();
+export const getSettings = () => settingsRepository.getErpSettings();
 
 /**
  * Get sliders
  */
-export const getSliders = () => otherRepository.getSliders();
+export const getSliders = () => websiteRepository.getSliders();
 
 /**
  * Get navigation config
  */
-export const getNavigationConfig = () => otherRepository.getNavigationConfig();
+export const getNavigationConfig = () => websiteRepository.getNavigationConfig();

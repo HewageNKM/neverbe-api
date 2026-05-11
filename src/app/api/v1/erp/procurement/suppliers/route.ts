@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getSuppliers,
   createSupplier,
   getSuppliersDropdown,
 } from "@/services/SupplierService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_suppliers");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_suppliers");
 
     const url = new URL(req.url);
     const dropdown = url.searchParams.get("dropdown");
@@ -28,27 +26,26 @@ export const GET = async (req: Request) => {
     );
     return NextResponse.json(data);
   } catch (error: unknown) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "create_suppliers");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "create_suppliers");
 
     const formData = await req.formData();
     const data = formData.get("data");
 
     if (!data) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const body = JSON.parse(data as string);
     const supplier = await createSupplier(body);
     return NextResponse.json(supplier, { status: 201 });
   } catch (error: unknown) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

@@ -132,92 +132,60 @@ export class ComboRepository extends BaseRepository<ComboProduct> {
   }
 
   /**
-   * Find paginated active combos with thumbnails
+   * Find paginated combos for ERP
    */
-  async findPaginated(
-    page: number = 1,
-    pageSize: number = 6
-  ): Promise<{ combos: ComboProduct[]; total: number; totalPages: number }> {
-    // Get all active combos first (for accurate count)
-    const allSnapshot = await this.collection
-      .where("status", "==", "ACTIVE")
-      .where("isDeleted", "!=", true)
+  async findPaginatedForErp(options: {
+    page?: number;
+    size?: number;
+  }): Promise<{ dataList: ComboProduct[]; rowCount: number }> {
+    const { page = 1, size = 20 } = options;
+    const query = this.collection.where("isDeleted", "!=", true);
+
+    const total = (await query.count().get()).data().count;
+    const snapshot = await query
+      .offset((page - 1) * size)
+      .limit(size)
       .get();
 
-    const total = allSnapshot.size;
-    const totalPages = Math.ceil(total / pageSize);
-
-    // Get paginated slice
-    const offset = (page - 1) * pageSize;
-    const paginatedDocs = allSnapshot.docs.slice(offset, offset + pageSize);
-
-    const combos = paginatedDocs.map((doc) =>
-      this.serializeCombo({ id: doc.id, ...doc.data() })
-    );
-
-    // Populate with product thumbnails
-    const populatedCombos = await Promise.all(
-      combos.map(async (combo: any) => {
-        const firstItem = combo.items?.[0];
-        if (!firstItem) return combo;
-
-        try {
-          const productDoc = await this.collection.firestore
-            .collection("products")
-            .doc(firstItem.productId)
-            .get();
-
-          if (!productDoc.exists) return combo;
-
-          const productData = productDoc.data();
-          return {
-            ...combo,
-            previewThumbnail:
-              combo.thumbnail?.url || productData?.thumbnail?.url,
-          };
-        } catch {
-          return combo;
-        }
-      })
-    );
-
-    return { combos: populatedCombos, total, totalPages };
+    return {
+      dataList: snapshot.docs.map(doc => this.serializeCombo({ id: doc.id, ...doc.data() })),
+      rowCount: total
+    };
   }
 
   /**
-   * Validate combo item selections for add to cart
+   * Create combo
    */
-  validateSelection(
-    combo: ComboProduct,
-    selections: { productId: string; variantId: string; size: string }[]
-  ): { valid: boolean; message?: string } {
-    const requiredItems =
-      (combo as any).items?.filter((item: any) => item.required) || [];
+  async create(id: string, data: any): Promise<ComboProduct> {
+    const now = new Date();
+    const newCombo = {
+      ...data,
+      isDeleted: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.collection.doc(id).set(newCombo);
+    return { id, ...newCombo } as unknown as ComboProduct;
+  }
 
-    // Check all required items have a selection
-    for (const required of requiredItems) {
-      const hasSelection = selections.some(
-        (s) => s.productId === required.productId
-      );
-      if (!hasSelection) {
-        return {
-          valid: false,
-          message: "Please select options for all required items",
-        };
-      }
-    }
+  /**
+   * Update combo
+   */
+  async update(id: string, data: any): Promise<void> {
+    await this.collection.doc(id).update({
+      ...data,
+      updatedAt: new Date(),
+    });
+  }
 
-    // Check all selections have size
-    for (const selection of selections) {
-      if (!selection.size) {
-        return {
-          valid: false,
-          message: "Please select a size for all items",
-        };
-      }
-    }
-
-    return { valid: true };
+  /**
+   * Soft delete combo
+   */
+  async softDelete(id: string): Promise<void> {
+    await this.collection.doc(id).update({
+      isDeleted: true,
+      updatedAt: new Date(),
+    });
   }
 }
 

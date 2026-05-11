@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getGRNs, createGRN } from "@/services/GRNService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_grn");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_grn");
 
     const url = new URL(req.url);
     const purchaseOrderId = url.searchParams.get("purchaseOrderId");
@@ -18,27 +16,26 @@ export const GET = async (req: Request) => {
     );
     return NextResponse.json(data);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "create_grn");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "create_grn");
 
     const formData = await req.formData();
     const data = formData.get("data");
 
     if (!data) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const body = JSON.parse(data as string);
     const grn = await createGRN(body);
     return NextResponse.json(grn, { status: 201 });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

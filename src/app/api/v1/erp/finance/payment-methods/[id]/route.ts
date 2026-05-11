@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   updatePaymentMethod,
   deletePaymentMethod,
 } from "@/services/PaymentMethodService";
-import { errorResponse } from "@/utils/apiResponse";
 
 // PUT: Update payment method
 export async function PUT(
@@ -12,15 +11,14 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authorized = await authorizeRequest(req, "manage_payment_methods");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_payment_methods");
 
     const { id } = await params;
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
@@ -38,7 +36,7 @@ export async function PUT(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }
 
@@ -48,8 +46,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authorized = await authorizeRequest(req, "manage_payment_methods");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_payment_methods");
 
     const { id } = await params;
 
@@ -57,6 +54,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }

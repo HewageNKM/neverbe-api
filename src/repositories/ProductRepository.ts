@@ -3,6 +3,7 @@ import type { Query } from "firebase-admin/firestore";
 import type { Product, ProductVariant } from "@/interfaces";
 import { FirestoreQueryBuilder } from "./utils/FirestoreQueryBuilder";
 import { ProductFilterBuilder } from "./filters/ProductFilterBuilder";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * Query options for product fetching
@@ -84,9 +85,10 @@ export class ProductRepository extends BaseRepository<Product> {
 
   private filterByGender(products: Product[], gender: string): Product[] {
     if (!gender) return products;
+    const lowerGender = gender.toLowerCase();
     return products.filter((product) =>
-      (product.gender || []).some(
-        (g: string) => g.toLowerCase() === gender.toLowerCase()
+      (product.tags || []).some(
+        (t: string) => t.toLowerCase() === lowerGender
       )
     );
   }
@@ -332,6 +334,76 @@ export class ProductRepository extends BaseRepository<Product> {
   }
 
   /**
+   * Create a new product
+   */
+  async create(id: string, data: Partial<Product>): Promise<Product> {
+    await this.collection.doc(id).set({
+      ...data,
+      id,
+      productId: id,
+      isDeleted: false,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    const doc = await this.collection.doc(id).get();
+    return doc.data() as Product;
+  }
+
+  /**
+   * Update an existing product
+   */
+  async update(id: string, data: Partial<Product>, tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch): Promise<void> {
+    const docRef = this.collection.doc(id);
+    const updateData = {
+      ...data,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (tx) {
+      (tx as any).update(docRef, updateData);
+    } else {
+      await docRef.set(updateData, { merge: true });
+    }
+  }
+
+  /**
+   * Get all products for ERP with search and filters
+   */
+  async findAllPaginated(options: {
+    page?: number;
+    size?: number;
+    search?: string;
+    brand?: string;
+    category?: string;
+    status?: boolean;
+    listing?: boolean;
+  }): Promise<{ dataList: Product[]; total: number }> {
+    const { page = 1, size = 20, search, brand, category, status, listing } = options;
+    
+    let query: Query = this.getActiveQuery();
+
+    if (brand) query = query.where("brand", "==", brand);
+    if (category) query = query.where("category", "==", category);
+    if (typeof status === "boolean") query = query.where("status", "==", status);
+    if (typeof listing === "boolean") query = query.where("listing", "==", listing);
+
+    if (search) {
+      query = query
+        .where("nameLower", ">=", search.toLowerCase())
+        .where("nameLower", "<=", search.toLowerCase() + "\uf8ff");
+    }
+
+    const total = await this.countDocuments(query);
+    const snapshot = await query
+      .orderBy("createdAt", "desc")
+      .offset((page - 1) * size)
+      .limit(size)
+      .get();
+
+    const dataList = snapshot.docs.map((doc) => doc.data() as Product);
+    return { dataList, total };
+  }
+
+  /**
    * Get product stock
    */
   async getStock(
@@ -364,6 +436,93 @@ export class ProductRepository extends BaseRepository<Product> {
       id: doc.data().id,
       updatedAt: doc.data().updatedAt,
     }));
+  }
+
+  /**
+   * Find products with low stock across all variants/sizes
+   */
+  async findLowStockAlerts(
+    threshold: number = 5,
+    limit: number = 10
+  ): Promise<any[]> {
+    const inventoryQuery = this.collection.firestore
+      .collection("stock_inventory")
+      .where("quantity", "<=", threshold)
+      .where("quantity", ">", 0)
+      .orderBy("quantity", "asc")
+      .limit(limit);
+
+    const snapshot = await inventoryQuery.get();
+    if (snapshot.empty) return [];
+
+    const productIds = Array.from(new Set(snapshot.docs.map(doc => doc.data().productId).filter(Boolean)));
+    const products = await this.findByIds(productIds as string[]);
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      const product = productMap.get(data.productId);
+      return {
+        productId: data.productId,
+        productName: product?.name || "Unknown Product",
+        variantName: data.variantName || "",
+        size: data.size || "",
+        currentStock: data.quantity || 0,
+        thumbnail: product?.thumbnail?.url,
+      };
+    });
+  }
+
+  /**
+   * Search active products by name (case-insensitive)
+   */
+  async searchActive(query: string, limit: number = 100): Promise<Product[]> {
+    const q = query.toLowerCase();
+    const snapshot = await this.getActiveQuery()
+      .where("status", "==", true)
+      .where("nameLower", ">=", q)
+      .where("nameLower", "<=", q + "\uf8ff")
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+  }
+
+  /**
+   * Update variants for a product
+   */
+  async updateVariants(productId: string, variants: any[]): Promise<void> {
+    await this.collection.doc(productId).update({
+      variants,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  /**
+   * Update total stock in a transaction
+   */
+  async updateTotalStock(tx: FirebaseFirestore.Transaction, productId: string, diff: number): Promise<void> {
+    const ref = this.collection.doc(productId);
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      const data = snap.data() as Product;
+      const newTotal = (data.totalStock ?? 0) - diff;
+      (tx as any).update(ref, {
+        totalStock: newTotal,
+        inStock: newTotal > 0,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /**
+   * Soft-delete a product
+   */
+  async delete(id: string): Promise<void> {
+    await this.collection.doc(id).update({
+      isDeleted: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   }
 }
 

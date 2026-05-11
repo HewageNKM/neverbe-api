@@ -1,212 +1,72 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
-import { FieldValue } from "firebase-admin/firestore";
+import { categoryRepository } from "@/repositories/CategoryRepository";
+import { Category } from "@/model/Category";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
 
-export interface Category {
-  id?: string;
-  name: string;
-  description?: string;
-  active: boolean;
-  imageUrl?: string;
-  isFeatured?: boolean;
-  isDeleted?: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
-
-const COLLECTION = "categories";
+/**
+ * CategoryService - Business logic for product categories
+ * Delegates data access to categoryRepository
+ */
 
 // CREATE
 export const createCategory = async (category: Category) => {
-  const id = `c-${nanoid(8)}`.toLowerCase(); // generates a short 8-character unique ID
-
-  await adminFirestore
-    .collection(COLLECTION)
-    .doc(id)
-    .set({
-      ...category,
-      id,
-      active: category.active ?? true,
-      isDeleted: false,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  const doc = await adminFirestore.collection(COLLECTION).doc(id).get();
-  return { id: doc.id, ...(doc.data() as Category) };
+  const id = `c-${nanoid(8)}`.toLowerCase();
+  return await categoryRepository.create(id, {
+    ...category,
+    active: category.active ?? true,
+  });
 };
 
-export const getCategories = async ({
-  page = 1,
-  size = 10,
-  search = "",
-  status,
-}: {
+export const getCategories = async (options: {
   page?: number;
   size?: number;
   search?: string;
   status?: "active" | "inactive" | null;
 }) => {
-  try {
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false);
-
-    // Apply status filter
-    if (status === "active") query = query.where("active", "==", true);
-    if (status === "inactive") query = query.where("active", "==", false);
-
-    // Apply search filter
-    if (search.trim()) {
-      const s = search.trim();
-      query = query.where("name", ">=", s).where("name", "<=", s + "\uf8ff");
-    }
-
-    // Pagination
-    const offset = (page - 1) * size;
-    const snapshot = await query.offset(offset).limit(size).get();
-
-    const categories: Category[] = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Category),
-    }));
-
-    // Total count (optional)
-    let totalQuery: FirebaseFirestore.Query = adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false);
-    if (status === "active")
-      totalQuery = totalQuery.where("active", "==", true);
-    if (status === "inactive")
-      totalQuery = totalQuery.where("active", "==", false);
-    if (search.trim()) {
-      const s = search.trim();
-      totalQuery = totalQuery
-        .where("name", ">=", s)
-        .where("name", "<=", s + "\uf8ff");
-    }
-    const totalSnapshot = await totalQuery.get();
-
-    return {
-      dataList: categories,
-      rowCount: totalSnapshot.size,
-    };
-  } catch (error) {
-    console.error("Get Categories Error:", error);
-    return { dataList: [], rowCount: 0 };
-  }
+  const { dataList, total } = await categoryRepository.findPaginated(options);
+  return {
+    dataList,
+    rowCount: total,
+  };
 };
 
 // READ single
 export const getCategoryById = async (id: string) => {
-  const doc = await adminFirestore.collection(COLLECTION).doc(id).get();
-  if (!doc.exists || doc.data()?.isDeleted) {
-    throw new AppError("Category not found", 404);
-  }
-  return { id: doc.id, ...(doc.data() as Category) };
+  const category = await categoryRepository.findById(id);
+  if (!category) throw new AppError("Category not found", 404);
+  return category;
 };
 
 // UPDATE
 export const updateCategory = async (id: string, data: Partial<Category>) => {
-  const ref = adminFirestore.collection(COLLECTION).doc(id);
-  const doc = await ref.get();
+  const exists = await categoryRepository.findById(id);
+  if (!exists) throw new AppError("Category not found", 404);
 
-  if (!doc.exists || doc.data()?.isDeleted) {
-    throw new AppError("Category not found", 404);
-  }
-
-
-  await ref.update({ ...data, updatedAt: FieldValue.serverTimestamp() });
-  const updatedDoc = await ref.get();
-  return { id: updatedDoc.id, ...(updatedDoc.data() as Category) };
+  return await categoryRepository.update(id, data);
 };
 
 // SOFT DELETE
 export const softDeleteCategory = async (id: string) => {
-  const ref = adminFirestore.collection(COLLECTION).doc(id);
-  const doc = await ref.get();
+  const exists = await categoryRepository.findById(id);
+  if (!exists) throw new AppError("Category not found", 404);
 
-  if (!doc.exists || doc.data()?.isDeleted) {
-    throw new AppError("Category not found", 404);
-  }
-
-  await ref.update({
-    isDeleted: true,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  await categoryRepository.softDelete(id);
   return { success: true };
 };
 
 // RESTORE
 export const restoreCategory = async (id: string) => {
-  const ref = adminFirestore.collection(COLLECTION).doc(id);
-  const doc = await ref.get();
+  const exists = await categoryRepository.findById(id);
+  if (!exists) throw new AppError("Category not found", 404);
 
-  if (!doc.exists) {
-    throw new AppError("Category not found", 404);
-  }
-
-  await ref.update({
-    isDeleted: false,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  await categoryRepository.update(id, { isDeleted: false });
   return { success: true };
 };
 
 export const getCategoriesForDropdown = async () => {
-  try {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .where("status", "==", true)
-      .get();
-    const categories = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      label: doc.data().name,
-    }));
-    return categories;
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
+  return await categoryRepository.findForDropdown();
 };
+
 export const getFeaturedCategories = async () => {
-  try {
-    const featuredSnapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .where("active", "==", true)
-      .where("isFeatured", "==", true)
-      .get();
-
-    let categories = featuredSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Category),
-    }));
-
-    // Dynamic Fallback: If no featured categories, fetch all active and pick 8 random ones
-    if (categories.length === 0) {
-      const allActiveSnapshot = await adminFirestore
-        .collection(COLLECTION)
-        .where("isDeleted", "==", false)
-        .where("active", "==", true)
-        .get();
-      
-      const allActive = allActiveSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Category),
-      }));
-
-      // In-memory shuffle for simplicity (assuming manageable number of categories)
-      categories = allActive
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 8);
-    }
-
-    return categories;
-  } catch (error) {
-    console.error("Get Featured Categories Error:", error);
-    return [];
-  }
+  return await categoryRepository.findFeatured();
 };
-

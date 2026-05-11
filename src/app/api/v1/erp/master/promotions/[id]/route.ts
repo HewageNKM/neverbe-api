@@ -1,11 +1,10 @@
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getPromotionById,
   updatePromotion,
   deletePromotion,
 } from "@/services/PromotionService";
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 interface Props {
   params: Promise<{
@@ -15,24 +14,22 @@ interface Props {
 
 export const GET = async (req: NextRequest, { params }: Props) => {
   try {
-    const authorized = await authorizeRequest(req, "view_promotions");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_promotions");
 
     const { id } = await params;
     const promotion = await getPromotionById(id);
     if (!promotion) {
-      return errorResponse("Promotion not found", 404);
+      return NextResponse.json({ success: false, message: "Promotion not found" }, { status: 404 });
     }
     return NextResponse.json(promotion);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const PUT = async (req: NextRequest, { params }: Props) => {
   try {
-    const authorized = await authorizeRequest(req, "update_promotions");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "update_promotions");
 
     const { id } = await params;
     const formData = await req.formData();
@@ -40,7 +37,7 @@ export const PUT = async (req: NextRequest, { params }: Props) => {
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const data = JSON.parse(rawData);
@@ -48,19 +45,18 @@ export const PUT = async (req: NextRequest, { params }: Props) => {
     const updated = await updatePromotion(id, data, file);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const DELETE = async (req: NextRequest, { params }: Props) => {
   try {
-    const authorized = await authorizeRequest(req, "delete_promotions");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "delete_promotions");
 
     const { id } = await params;
     const result = await deletePromotion(id);
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

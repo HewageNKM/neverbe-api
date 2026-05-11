@@ -1,12 +1,16 @@
-import { adminFirestore, adminStorageBucket } from "@/firebase/firebaseAdmin";
+import { adminStorageBucket } from "@/firebase/firebaseAdmin";
+import { comboRepository } from "@/repositories/ComboRepository";
 import { ComboProduct } from "@/model/ComboProduct";
-import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { toSafeLocaleString } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
 
-const COMBOS_COLLECTION = "combo_products";
+/**
+ * ComboService - Business logic for combo/bundle products
+ * Delegates data access to comboRepository
+ */
+
 const BUCKET = adminStorageBucket;
 
 const uploadThumbnail = async (
@@ -16,49 +20,27 @@ const uploadThumbnail = async (
   const filePath = `combos/${id}/thumbnail/thumb_${Date.now()}.webp`;
   const url = await uploadCompressedImage(file, filePath);
 
-  return {
-    url: url,
-    file: filePath,
-    order: 0,
-  };
+  return { url, file: filePath, order: 0 };
 };
 
 export const getCombos = async (
   pageNumber: number = 1,
   size: number = 20,
 ): Promise<{ dataList: ComboProduct[]; rowCount: number }> => {
-  try {
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection(COMBOS_COLLECTION)
-      .where("isDeleted", "!=", true);
+  const { dataList, rowCount } = await comboRepository.findPaginatedForErp({
+    page: pageNumber,
+    size
+  });
 
-    const offset = (pageNumber - 1) * size;
-    const snapshot = await query.offset(offset).limit(size).get();
+  const formattedList = dataList.map((data) => ({
+    ...data,
+    createdAt: toSafeLocaleString(data.createdAt) || "",
+    updatedAt: toSafeLocaleString(data.updatedAt) || "",
+    startDate: toSafeLocaleString(data.startDate) || "",
+    endDate: toSafeLocaleString(data.endDate) || "",
+  }));
 
-    const allDocs = await adminFirestore
-      .collection(COMBOS_COLLECTION)
-      .where("isDeleted", "!=", true)
-      .count()
-      .get();
-    const rowCount = allDocs.data().count;
-
-    const dataList = snapshot.docs.map((doc) => {
-      const data = doc.data() as Omit<ComboProduct, "id">;
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: toSafeLocaleString(data.createdAt) || "",
-        updatedAt: toSafeLocaleString(data.updatedAt) || "",
-        startDate: toSafeLocaleString(data.startDate) || "",
-        endDate: toSafeLocaleString(data.endDate) || "",
-      };
-    });
-
-    return { dataList, rowCount };
-  } catch (error) {
-    console.error("Error getting combos:", error);
-    throw error;
-  }
+  return { dataList: formattedList, rowCount };
 };
 
 export const createCombo = async (
@@ -66,27 +48,17 @@ export const createCombo = async (
   file?: File,
 ): Promise<ComboProduct> => {
   const docId = `combo-${nanoid(10)}`;
-  const now = FieldValue.serverTimestamp();
-
   let thumbnail;
-  if (file) {
-    thumbnail = await uploadThumbnail(file, docId);
-  }
-
+  if (file) thumbnail = await uploadThumbnail(file, docId);
 
   const newCombo = {
     ...data,
     startDate: data.startDate ? new Date(data.startDate as any) : null,
     endDate: data.endDate ? new Date(data.endDate as any) : null,
-    createdAt: now,
-    updatedAt: now,
-    isDeleted: false,
     thumbnail: thumbnail || null,
   };
 
-  await adminFirestore.collection(COMBOS_COLLECTION).doc(docId).set(newCombo);
-
-  return { id: docId, ...newCombo } as unknown as ComboProduct;
+  return await comboRepository.create(docId, newCombo);
 };
 
 export const updateCombo = async (
@@ -94,69 +66,46 @@ export const updateCombo = async (
   data: Partial<ComboProduct>,
   file?: File,
 ): Promise<ComboProduct> => {
-  const docRef = adminFirestore.collection(COMBOS_COLLECTION).doc(id);
-  const docSnap = await docRef.get();
-
-  if (!docSnap.exists || docSnap.data()?.isDeleted) {
-    throw new AppError(`Combo with ID ${id} not found`, 404);
-  }
-
-  // Remove createdAt and thumbnail from data to handle separately
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { createdAt, thumbnail: existingThumbnail, ...updateData } = data;
+  const exists = await comboRepository.findById(id);
+  if (!exists) throw new AppError(`Combo with ID ${id} not found`, 404);
 
   let newThumbnail: ComboProduct["thumbnail"] | undefined;
-
   if (file) {
-    const oldPath = docSnap.data()?.thumbnail?.file;
+    const oldPath = (exists as any).thumbnail?.file;
     if (oldPath) {
       try {
         await BUCKET.file(oldPath).delete();
-      } catch (delError) {
-        console.warn(`Failed to delete old thumbnail: ${oldPath}`, delError);
+      } catch (e) {
+        console.warn(`Failed to delete old thumbnail: ${oldPath}`, e);
       }
     }
     newThumbnail = await uploadThumbnail(file, id);
   }
 
-
-  const payload: any = {
+  const { createdAt, thumbnail: existingThumbnail, ...updateData } = data;
+  const payload = {
     ...updateData,
     ...(newThumbnail ? { thumbnail: newThumbnail } : {}),
-    updatedAt: FieldValue.serverTimestamp(),
   };
 
-  await docRef.update(payload);
-  const updatedDoc = await docRef.get();
-  return { id: updatedDoc.id, ...updatedDoc.data() } as ComboProduct;
+  await comboRepository.update(id, payload);
+  return (await comboRepository.findById(id)) as ComboProduct;
 };
 
 export const deleteCombo = async (id: string): Promise<{ id: string }> => {
-  const docRef = adminFirestore.collection(COMBOS_COLLECTION).doc(id);
-  const docSnap = await docRef.get();
-
-  if (!docSnap.exists || docSnap.data()?.isDeleted) {
-    throw new AppError(`Combo with ID ${id} not found`, 404);
-  }
-
-  await docRef.update({
-    isDeleted: true,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  const exists = await comboRepository.findById(id);
+  if (!exists) throw new AppError(`Combo with ID ${id} not found`, 404);
+  await comboRepository.softDelete(id);
   return { id };
 };
 
 export const getComboById = async (id: string): Promise<ComboProduct> => {
-  const doc = await adminFirestore.collection(COMBOS_COLLECTION).doc(id).get();
-  if (!doc.exists) throw new AppError("Combo not found", 404);
-  const data = doc.data() as ComboProduct;
-
-  // Skip soft-deleted combos
-  if (data.isDeleted) throw new AppError("Combo not found", 404);
+  const data = await comboRepository.findById(id);
+  if (!data) throw new AppError("Combo not found", 404);
 
   return {
     ...data,
-    id: doc.id,
+    id,
     createdAt: toSafeLocaleString(data.createdAt) || "",
     updatedAt: toSafeLocaleString(data.updatedAt) || "",
     startDate: toSafeLocaleString(data.startDate) || "",

@@ -4,7 +4,6 @@ import {
   getExchangesByOrderId,
 } from "@/services/ExchangeService";
 import { verifyPosAuth, handleAuthError } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
 
 /**
  * GET - Get exchange record by ID or by order ID
@@ -30,7 +29,7 @@ export async function GET(
     const exchange = await getExchangeById(exchangeId);
 
     if (!exchange) {
-      return errorResponse(`Exchange ${exchangeId} not found`, 404);
+      return NextResponse.json({ success: false, message: `Exchange ${exchangeId} not found` }, { status: 404 });
     }
 
     return NextResponse.json(exchange);

@@ -1,42 +1,39 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getPaymentMethods,
   createPaymentMethod,
 } from "@/services/PaymentMethodService";
-import { errorResponse } from "@/utils/apiResponse";
 
 // GET: List all payment methods
 export async function GET(req: Request) {
   try {
-    const authorized = await authorizeRequest(req, "view_payment_methods");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_payment_methods");
 
     const methods = await getPaymentMethods();
     return NextResponse.json(methods);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }
 
 // POST: Create a new payment method
 export async function POST(req: Request) {
   try {
-    const authorized = await authorizeRequest(req, "manage_payment_methods");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_payment_methods");
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
     const { name, fee, status, available, description, paymentId } = body;
 
     if (!name) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Name is required" }, { status: 400 });
     }
 
     const newMethod = await createPaymentMethod({
@@ -50,6 +47,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, method: newMethod });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }

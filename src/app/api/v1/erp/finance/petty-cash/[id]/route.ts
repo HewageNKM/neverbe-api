@@ -1,30 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeAndGetUser } from "@/services/AuthService";
-import { Timestamp } from "firebase-admin/firestore";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getPettyCashById,
   updatePettyCash,
   deletePettyCash,
   reviewPettyCash,
 } from "@/services/PettyCashService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const user = await authorizeAndGetUser(req);
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_petty_cash");
 
     const { id } = await params;
     const entry = await getPettyCashById(id);
 
-    if (!entry) return errorResponse("Petty Cash entry not found", 404);
+    if (!entry) {
+      return NextResponse.json({ success: false, message: "Petty Cash entry not found" }, { status: 404 });
+    }
 
     return NextResponse.json(entry);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -33,8 +32,7 @@ export const PUT = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const user = await authorizeAndGetUser(req);
-    if (!user) return errorResponse("Unauthorized", 401);
+    const decodedToken = await requirePermission(req, "create_petty_cash");
 
     const { id } = await params;
     const formData = await req.formData();
@@ -42,7 +40,7 @@ export const PUT = async (
     const dataField = formData.get("data");
 
     if (!dataField) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const data = JSON.parse(dataField as string);
@@ -52,20 +50,18 @@ export const PUT = async (
       const updatedEntry = await reviewPettyCash(
         id,
         data.status,
-        user.userId || "system"
+        decodedToken.uid || "system"
       );
       return NextResponse.json(updatedEntry);
     }
 
     // Regular update
-    if (user.userId) {
-      data.updatedBy = user.userId;
-    }
+    data.updatedBy = decodedToken.uid;
 
     const updatedEntry = await updatePettyCash(id, data, file || undefined);
     return NextResponse.json(updatedEntry);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -74,8 +70,7 @@ export const DELETE = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const user = await authorizeAndGetUser(req);
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "create_petty_cash");
 
     const { id } = await params;
     await deletePettyCash(id);
@@ -85,6 +80,6 @@ export const DELETE = async (
       { status: 200 }
     );
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

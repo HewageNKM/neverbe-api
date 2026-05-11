@@ -1,37 +1,28 @@
 import { promotionRepository } from "@/repositories/PromotionRepository";
-import { adminStorageBucket } from "@/firebase/firebaseAdmin";
-import { errorResponse } from "@/utils/apiResponse";
-import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { uploadFile } from "@/services/StorageService";
+import { NextResponse } from "next/server";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "view_promotions");
     const promotions = await promotionRepository.findAll();
     return NextResponse.json(promotions);
   } catch (error: any) {
-    console.error("[Promotions API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "create_promotions");
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const title = formData.get("title") as string;
     const link = formData.get("link") as string;
 
     if (!file || !title || !link) {
-      return errorResponse("Missing required fields", 400);
+      return NextResponse.json({ success: false, message: "Missing required fields" }, { status: 400 });
     }
 
     const { url } = await uploadFile(file, "promotions");
@@ -54,8 +45,7 @@ export const POST = async (req: Request) => {
     } as any);
     return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
-    console.error("[Promotions API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

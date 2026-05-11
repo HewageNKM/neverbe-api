@@ -1,7 +1,7 @@
 import { couponRepository } from "@/repositories/CouponRepository";
 import { comboRepository } from "@/repositories/ComboRepository";
 import { promotionRepository } from "@/repositories/PromotionRepository";
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { productRepository } from "@/repositories/ProductRepository";
 import { Timestamp } from "firebase-admin/firestore";
 import { Coupon } from "@/interfaces/Coupon";
 import dayjs from "dayjs";
@@ -222,14 +222,8 @@ export const validateCoupon = async (
     const productIds = cartItems.map((item) => item.itemId).filter(Boolean);
 
     if (productIds.length > 0) {
-      const productsSnapshot = await adminFirestore
-        .collection("products")
-        .where("__name__", "in", productIds.slice(0, 10))
-        .get();
-
-      const productCategories = productsSnapshot.docs.map(
-        (doc) => doc.data()?.category
-      );
+      const products = await productRepository.findByIds(productIds.slice(0, 10));
+      const productCategories = products.map((p) => p.category);
       const hasApplicableCategory = productCategories.some(
         (cat) => cat && coupon.applicableCategories!.includes(cat)
       );

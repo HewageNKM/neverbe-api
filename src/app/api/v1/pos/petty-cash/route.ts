@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyPosAuth, handleAuthError, authorizeAndGetUser } from "@/services/AuthService";
+import { verifyPosAuth, handleAuthError } from "@/services/AuthService";
 import { addPettyCash, getPettyCashList } from "@/services/PettyCashService";
-import { errorResponse } from "@/utils/apiResponse";
 
 /**
  * GET - Fetch current month's petty cash entries for a specific stock
@@ -14,7 +13,7 @@ export async function GET(request: NextRequest) {
     const stockId = searchParams.get("stockId");
 
     if (!stockId) {
-      return errorResponse("stockId is required", 400);
+      return NextResponse.json({ success: false, message: "stockId is required" }, { status: 400 });
     }
 
     // Calculate start of current month
@@ -39,24 +38,23 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await verifyPosAuth("access_pos");
-    const user = await authorizeAndGetUser(request);
+    const user = await verifyPosAuth("access_pos");
     
     const formData = await request.formData();
     const file = formData.get("attachment") as File | null;
     const dataField = formData.get("data");
 
     if (!dataField) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const data = JSON.parse(dataField as string);
 
     // Enforce POS business rules
     data.status = "PENDING";
-    if (user?.userId) {
-      data.createdBy = user.userId;
-      data.updatedBy = user.userId;
+    if (user?.uid) {
+      data.createdBy = user.uid;
+      data.updatedBy = user.uid;
     }
 
     const newEntry = await addPettyCash(data, file || undefined);

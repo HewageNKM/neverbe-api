@@ -1,12 +1,10 @@
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getCoupons, createCoupon } from "@/services/PromotionService";
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: NextRequest) => {
   try {
-    const authorized = await authorizeRequest(req, "view_coupons");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_coupons");
 
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
@@ -17,31 +15,30 @@ export const GET = async (req: NextRequest) => {
     const result = await getCoupons(page, size, filterStatus, search);
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: NextRequest) => {
   try {
-    const authorized = await authorizeRequest(req, "create_coupons");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "create_coupons");
 
     const formData = await req.formData();
     const rawData = formData.get("data") as string;
     
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const data = JSON.parse(rawData);
 
     if (!data.code || !data.discountType) {
-      return errorResponse("Code and Discount Type required", 400);
+      return NextResponse.json({ success: false, message: "Code and Discount Type required" }, { status: 400 });
     }
 
     const coupon = await createCoupon(data);
     return NextResponse.json(coupon, { status: 201 });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

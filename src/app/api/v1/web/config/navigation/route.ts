@@ -1,14 +1,13 @@
 import { getNavigationConfig } from "@/services/OtherService";
 import { NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
+import { handleAuthError } from "@/services/AuthService";
 
 export const GET = async () => {
   try {
     const config = await getNavigationConfig();
     return NextResponse.json(config);
   } catch (error: unknown) {
-    console.error("[Navigation API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

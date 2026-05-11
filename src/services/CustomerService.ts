@@ -1,9 +1,9 @@
-import { otherRepository } from "@/repositories/OtherRepository";
+import { userRepository } from "@/repositories/UserRepository";
 import { encryptData, decryptData } from "@/services/EncryptionService";
 
 /**
- * CustomerService - Thin wrapper over OtherRepository
- * Delegates data access to repository layer
+ * CustomerService - Business logic for customers and users
+ * Delegates data access to specialized repositories
  */
 
 interface AddressData {
@@ -15,7 +15,7 @@ interface AddressData {
 }
 
 export const getUserAddresses = async (uid: string) =>
-  otherRepository.getUserAddresses(uid, decryptData);
+  userRepository.getUserAddresses(uid, decryptData);
 
 export const saveUserAddress = async (uid: string, data: AddressData) =>
-  otherRepository.saveUserAddress(uid, data.type, data, encryptData);
+  userRepository.saveUserAddress(uid, data.type, data, encryptData);

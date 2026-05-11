@@ -1,17 +1,23 @@
-import { adminFirestore, adminStorageBucket } from "@/firebase/firebaseAdmin";
+import { productRepository } from "@/repositories/ProductRepository";
+import { orderRepository } from "@/repositories/OrderRepository";
+import { purchaseOrderRepository } from "@/repositories/PurchaseOrderRepository";
+import { settingsRepository } from "@/repositories/SettingsRepositories";
+import { brandRepository } from "@/repositories/BrandRepository";
+import { categoryRepository } from "@/repositories/CategoryRepository";
+import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
 import { Product } from "@/model/Product";
 import { ProductVariant } from "@/model/ProductVariant";
 import { nanoid } from "nanoid";
-import { FieldValue } from "firebase-admin/firestore";
-import { toSafeLocaleString } from "./UtilService";
-import { Order } from "@/model/Order";
-import { PopularItem } from "@/model/PopularItem";
-import { Timestamp } from "firebase-admin/firestore";
+import { adminStorageBucket } from "@/firebase/firebaseAdmin";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
+import { Order } from "@/model/Order";
+import { PopularItem } from "@/model/PopularItem";
 
-const PRODUCTS_COLLECTION = "products";
 const BUCKET = adminStorageBucket;
+
+// ====================== Helpers ======================
+
 const uploadThumbnail = async (
   file: File,
   id: string,
@@ -23,110 +29,108 @@ const uploadThumbnail = async (
     url: url,
     file: filePath,
     order: 0,
-  };
+  } as any;
 };
 
-// ... (previous code)
+const getApprovedPOProductIds = async (): Promise<Set<string>> => {
+  return await purchaseOrderRepository.findProductIdsFromApprovedPOs();
+};
 
-/**
- * Adds a new product to Firestore, now including generated keywords.
- * UPDATED to await generateTags
- */
+const enrichProductsWithLabels = async (
+  products: Product[],
+): Promise<Product[]> => {
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  const approvedPOProductIds = await getApprovedPOProductIds();
+
+  return products.map((product) => {
+    let createdAtDate: Date | null = null;
+    if (product.createdAt) {
+        if (typeof (product.createdAt as any).toDate === 'function') {
+            createdAtDate = (product.createdAt as any).toDate();
+        } else {
+            createdAtDate = new Date(product.createdAt);
+        }
+    }
+
+    const isNewArrival = createdAtDate && createdAtDate >= ninetyDaysAgo;
+    const isRestockingSoon = !product.inStock && approvedPOProductIds.has(product.id || product.productId);
+
+    return {
+      ...product,
+      isNewArrival: !!isNewArrival,
+      isRestockingSoon: !!isRestockingSoon,
+    };
+  });
+};
+
+// ====================== Core Operations ======================
+
 export const addProducts = async (product: Partial<Product>, file: File) => {
   const id = `p-${nanoid(8)}`.toLowerCase();
-
-  // 1. Upload thumbnail
   const thumbnail = await uploadThumbnail(file, id);
 
-  // Build tags from brand and category (no AI)
   const tags: string[] = [];
   if (product.brand) tags.push(product.brand.toLowerCase());
   if (product.category) tags.push(product.category.toLowerCase());
+  
+  const genderData = (product as any).gender;
+  if (genderData) {
+    const genders = Array.isArray(genderData) ? genderData : [genderData];
+    genders.forEach((g: string) => g && tags.push(g.toLowerCase()));
+  }
 
-  // Denormalize sizes from variants for search
   const allSizes = new Set<string>();
-  (product.variants || []).forEach((v) =>
-    v.sizes?.forEach((s) => allSizes.add(s)),
-  );
+  (product.variants || []).forEach((v) => v.sizes?.forEach((s) => allSizes.add(s)));
 
-
-  const newProductDocument: any = {
-    ...product, 
-    id: id,
-    productId: id,
-    thumbnail: thumbnail,
+  return await productRepository.create(id, {
+    ...product,
+    thumbnail,
     nameLower: product.name?.toLowerCase(),
-    tags: tags,
-    gender: product.gender || [],
+    tags,
     availableSizes: Array.from(allSizes),
-    isDeleted: false,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  await adminFirestore
-    .collection(PRODUCTS_COLLECTION)
-    .doc(id)
-    .set(newProductDocument);
-
-  const doc = await adminFirestore.collection(PRODUCTS_COLLECTION).doc(id).get();
-  return { id: doc.id, productId: doc.id, ...(doc.data() as Product) };
+  });
 };
 
-/**
- * Update product - removed AI tags, added gender and availableSizes
- */
 export const updateProduct = async (
   id: string,
   product: Partial<Product>,
   file?: File | null,
 ) => {
-  // Build tags from brand and category (no AI)
   const tags: string[] = [];
   if (product.brand) tags.push(product.brand.toLowerCase());
   if (product.category) tags.push(product.category.toLowerCase());
 
-  // Denormalize sizes from variants for search
+  const genderData = (product as any).gender;
+  if (genderData) {
+    const genders = Array.isArray(genderData) ? genderData : [genderData];
+    genders.forEach((g: string) => g && tags.push(g.toLowerCase()));
+  }
+
   const allSizes = new Set<string>();
-  (product.variants || []).forEach((v) =>
-    v.sizes?.forEach((s) => allSizes.add(s)),
-  );
+  (product.variants || []).forEach((v) => v.sizes?.forEach((s) => allSizes.add(s)));
 
   let thumbnail = product.thumbnail;
-
   if (file) {
-    const oldProduct = await getProductById(id);
-    // getProductById now throws if not found, so we are safe.
+    const oldProduct = await productRepository.findById(id);
     const oldPath = oldProduct?.thumbnail?.file;
     if (oldPath) {
-      try {
-        await BUCKET.file(oldPath).delete();
-      } catch (delError) {
-        console.warn(`Failed to delete old thumbnail: ${oldPath}`, delError);
-      }
+      try { await BUCKET.file(oldPath).delete(); } catch (delError) { console.warn(`Failed to delete old thumbnail`, delError); }
     }
     thumbnail = await uploadThumbnail(file, id);
   }
 
-
-  const updatedProductDocument = {
+  return await productRepository.update(id, {
     ...product,
-    thumbnail: thumbnail,
+    thumbnail,
     nameLower: product.name?.toLowerCase(),
-    tags: tags,
-    gender: product.gender || [],
+    tags,
     availableSizes: Array.from(allSizes),
-    updatedAt: new Date(),
-  };
-
-  await adminFirestore
-    .collection(PRODUCTS_COLLECTION)
-    .doc(id)
-    .set(updatedProductDocument, { merge: true }); // Use set with merge
-
-  const doc = await adminFirestore.collection(PRODUCTS_COLLECTION).doc(id).get();
-  return { id: doc.id, productId: doc.id, ...(doc.data() as Product) };
+  });
 };
+
+// ====================== Retrieval ======================
 
 export const getProducts = async (
   pageNumber = 1,
@@ -136,90 +140,26 @@ export const getProducts = async (
   category?: string,
   status?: boolean,
   listing?: boolean,
-): Promise<{ dataList: Omit<Product, "isDeleted">[]; rowCount: number }> => {
-  try {
-    let query: any = adminFirestore.collection(PRODUCTS_COLLECTION).where("isDeleted", "==", false);
+) => {
+  const { dataList, total } = await productRepository.findAllPaginated({
+    page: pageNumber, size, search, brand, category, status, listing,
+  });
 
-    if (brand) query = query.where("brand", "==", brand);
-    if (category) query = query.where("category", "==", category);
-    if (typeof status === "boolean") query = query.where("status", "==", status);
-    if (typeof listing === "boolean") query = query.where("listing", "==", listing);
+  const processed = dataList.map((p) => ({
+    ...p,
+    variants: p.variants.filter((v) => !v.isDeleted),
+  }));
 
-    if (search) {
-      query = query.where("nameLower", ">=", search.toLowerCase()).where("nameLower", "<=", search.toLowerCase() + "\uf8ff");
-    }
-
-    const countSnapshot = await query.count().get();
-    const nbHits = countSnapshot.data().count;
-
-    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
-
-    const products = snapshot.docs.map((doc) => {
-      const hit = doc.data();
-      const activeVariants = (hit.variants || []).filter(
-        (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
-      );
-
-      return {
-        ...hit,
-        productId: doc.id,
-        variants: activeVariants,
-        createdAt: hit.createdAt,
-        updatedAt: hit.updatedAt,
-      } as Omit<Product, "isDeleted">;
-    });
-
-    return { dataList: products, rowCount: nbHits };
-  } catch (error) {
-    console.error("Get Products Error:", error);
-    throw error;
-  }
+  return { dataList: processed, rowCount: total };
 };
 
 export const getProductById = async (id: string): Promise<Product> => {
-  const docSnap = await adminFirestore
-    .collection(PRODUCTS_COLLECTION)
-    .doc(id)
-    .get();
-  if (!docSnap.exists || docSnap.data()?.isDeleted) {
-    throw new AppError("Product not found", 404);
-  }
-
-  const data = docSnap.data() as any;
-  const activeVariants = (data.variants || []).filter(
-    (v: ProductVariant & { isDeleted?: boolean }) => !v.isDeleted,
-  );
-
+  const product = await productRepository.findById(id);
+  if (!product) throw new AppError("Product not found", 404);
   return {
-    ...data,
-    productId: docSnap.id,
-    variants: activeVariants,
-  } as Product;
-};
-
-// Get product dropdown for active products
-export const getProductDropdown = async () => {
-  try {
-    const snapshot = await adminFirestore
-      .collection(PRODUCTS_COLLECTION)
-      .where("isDeleted", "==", false)
-      .where("status", "==", true)
-      .get();
-
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        label: data.name,
-        buyingPrice: data.buyingPrice || 0,
-        variants: data.variants || [],
-        availableSizes: data.availableSizes || [],
-      };
-    });
-  } catch (error) {
-    console.error("Get Product Dropdown Error:", error);
-    throw error;
-  }
+    ...product,
+    variants: product.variants.filter((v) => !v.isDeleted),
+  };
 };
 
 export const getPopularProducts = async (
@@ -227,86 +167,122 @@ export const getPopularProducts = async (
   endDate: string,
   size: number,
 ): Promise<PopularItem[]> => {
-  try {
-    // Construct dates using the explicit year provided
-    const startDay = new Date(startDate);
+  const startDay = new Date(startDate);
+  const endDay = new Date(endDate);
+  startDay.setHours(0, 0, 0, 0);
+  endDay.setHours(23, 59, 59, 999);
 
-    // Setting day to 0 of (month + 1) gets the last day of the target month
-    const endDay = new Date(endDate);
+  const orders = await orderRepository.findPaidOrdersInDateRange(startDay, endDay);
+  
+  const itemsMap = new Map<string, number>();
+  orders.forEach((order) => {
+    if (order.items) {
+      order.items.forEach((item) => {
+        const count = itemsMap.get(item.itemId) || 0;
+        itemsMap.set(item.itemId, count + item.quantity);
+      });
+    }
+  });
 
-    startDay.setHours(0, 0, 0, 0);
-    endDay.setHours(23, 59, 59, 999);
+  const sortedEntries = Array.from(itemsMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, size);
+  const productIds = sortedEntries.map(([id]) => id);
+  const products = await productRepository.findByIds(productIds);
+  const productMap = new Map(products.map(p => [p.id, p]));
 
-    console.log(`Fetching popular items from ${startDay} to ${endDay}`);
+  return sortedEntries.map(([itemId, count]) => {
+    const product = productMap.get(itemId);
+    if (!product) return null;
+    return { item: product as any, soldCount: count };
+  }).filter(Boolean) as PopularItem[];
+};
 
-    const startTimestamp = Timestamp.fromDate(startDay);
-    const endTimestamp = Timestamp.fromDate(endDay);
+export const getHotProducts = async () => {
+  const itemCount = await orderRepository.countOrdersByItem(100);
+  const sortedItemIds = Object.entries(itemCount).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([itemId]) => itemId);
+  if (sortedItemIds.length === 0) return [];
 
-    // Query orders within the exact start and end timestamps
-    const orders = await adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "==", "Paid")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp)
-      .get();
+  const products = await productRepository.findByIds(sortedItemIds);
+  const filtered = products.filter((p) => p.listing === true && p.status === true && !p.isDeleted);
+  return enrichProductsWithLabels(filtered);
+};
 
-    console.log(`Fetched ${orders.size} orders`);
+export const getDealsProducts = async (
+  page: number = 1,
+  size: number = 10,
+  tags?: string[],
+  inStock?: boolean,
+  gender?: string,
+  sizes?: string[],
+) => {
+  const result = await productRepository.findDiscounted({ page, size, tags, inStock, gender, sizes });
+  const enriched = await enrichProductsWithLabels(result.dataList);
+  return { ...result, dataList: enriched };
+};
 
-    const itemsMap = new Map<string, number>();
+export const getDealsProductsFiltered = async (options: any) => {
+  const { tags, inStock, sizes, gender, page = 1, size = 20 } = options;
+  return getDealsProducts(page, size, tags, inStock, gender, sizes);
+};
 
-    orders.forEach((doc) => {
-      const order = doc.data() as Order;
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          const count = itemsMap.get(item.itemId) || 0;
-          itemsMap.set(item.itemId, count + item.quantity);
-        });
-      }
-    });
+export const searchWebProducts = async (query_string: string, options: any = {}) => {
+  const { page = 1, size = 20 } = options;
+  const { dataList, total } = await productRepository.findAllPaginated({
+    page, size, search: query_string, listing: true, status: true
+  });
+  const enriched = await enrichProductsWithLabels(dataList);
+  return { total, dataList: enriched };
+};
 
-    console.log(`Fetched ${itemsMap.size} unique items sold`);
+// ====================== Stock & Sitemap ======================
 
-    // Sort by sales count (descending) and take top 'size' items
-    const sortedEntries = Array.from(itemsMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, size);
+export const getBatchProductStock = async (
+  productId: string,
+  variantId: string,
+  sizes: string[],
+): Promise<Record<string, number>> => {
+  const settings = await settingsRepository.getEcommerceSettings();
+  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
 
-    const popularItems: PopularItem[] = [];
+  const results = await Promise.all(
+    sizes.map(async (size) => ({
+      size,
+      quantity: await productRepository.getStock(productId, variantId, size, settings.stockId!),
+    })),
+  );
 
-    // Fetch product details for the top items only
-    await Promise.all(
-      sortedEntries.map(async ([itemId, count]) => {
-        try {
-          const productDoc = await adminFirestore
-            .collection("products")
-            .doc(itemId)
-            .get();
+  const stockMap: Record<string, number> = {};
+  results.forEach(({ size, quantity }) => { stockMap[size] = quantity; });
+  return stockMap;
+};
 
-          if (productDoc.exists) {
-            const itemData = productDoc.data() as Product;
-            const itemWithStrings = {
-              ...itemData,
-              createdAt: toSafeLocaleString(itemData.createdAt),
-              updatedAt: toSafeLocaleString(itemData.updatedAt),
-            } as any;
+export const getProductsForSitemap = async () => {
+  const products = await productRepository.findAllForSitemap();
+  const baseUrl = process.env.WEB_BASE_URL;
+  return products.map((p) => ({
+    url: `${baseUrl}/collections/products/${p.id}`,
+    lastModified: new Date(),
+    priority: 0.7,
+  }));
+};
 
-            popularItems.push({
-              item: itemWithStrings,
-              soldCount: count,
-            });
-          }
-        } catch (err) {
-          console.error(`Failed to fetch product details for ${itemId}`, err);
-        }
-      }),
-    );
+export const getBrandForSitemap = async () => brandRepository.findForSitemap(process.env.WEB_BASE_URL || "");
+export const getCategoriesForSitemap = async () => categoryRepository.findForSitemap(process.env.WEB_BASE_URL || "");
+export const getPaymentMethods = async () => paymentMethodRepository.findForWebsite();
 
-    console.log(`Returning ${popularItems.length} popular items`);
+export const getProductDropdown = async () => {
+    const { dataList } = await productRepository.findAllPaginated({ size: 1000, status: true, listing: true });
+    return dataList.map(p => ({
+        id: p.id, label: p.name, buyingPrice: p.buyingPrice || 0,
+        variants: p.variants || [], availableSizes: p.availableSizes || [],
+    }));
+};
 
-    // Ensure final array is sorted by count (Promise.all might mix order)
-    return popularItems.sort((a, b) => b.soldCount - a.soldCount);
-  } catch (e) {
-    console.error("Error getting popular products:", e);
-    throw e;
-  }
+export const getProductStock = async (productId: string, variantId: string, size: string) => {
+  const settings = await settingsRepository.getEcommerceSettings();
+  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
+  return productRepository.getStock(productId, variantId, size, settings.stockId);
+};
+
+export const deleteProduct = async (id: string): Promise<void> => {
+  await productRepository.delete(id);
 };

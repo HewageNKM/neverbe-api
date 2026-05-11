@@ -1,17 +1,15 @@
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getCategoriesForDropdown } from "@/services/CategoryService";
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: NextRequest) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const res = await getCategoriesForDropdown();
     return NextResponse.json(res);
   } catch (err: any) {
     console.error("Get Categories Dropdown Error:", err);
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };

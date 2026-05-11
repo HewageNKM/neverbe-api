@@ -1,6 +1,8 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
-import admin from "firebase-admin";
 import { orderRepository } from "@/repositories/OrderRepository";
+import { productRepository } from "@/repositories/ProductRepository";
+import { inventoryRepository } from "@/repositories/InventoryRepository";
+import { promotionRepository } from "@/repositories/PromotionRepository";
+import { shippingRepository, settingsRepository } from "@/repositories/SettingsRepositories";
 import {
   sendOrderConfirmedEmail,
   sendOrderConfirmedSMS,
@@ -18,37 +20,28 @@ import {
   calculateCartDiscount,
 } from "./PromotionService";
 import { ShippingRule } from "@/model/ShippingRule";
-import { InventoryItem } from "@/model/InventoryItem";
 
 /**
- * Fetch an order by ID for invoice purposes
+ * WebOrderService - Business logic for website orders
+ * Delegates data access to repositories
  */
+
 export const getOrderByIdForInvoice = async (orderId: string) => {
   const order = await orderRepository.findByOrderId(orderId);
   if (!order) throw new Error(`Order ${orderId} not found.`);
   return order;
 };
 
-/**
- * Update payment status and handle post-payment actions
- */
 export const updatePayment = async (
   orderId: string,
   paymentId: string,
   status: string,
 ) => {
-  // Find document ID by orderId
   const docId = await orderRepository.findDocIdByOrderId(orderId);
   if (!docId) throw new Error(`Order ${orderId} not found.`);
 
-  // Update payment status
-  const orderData = await orderRepository.updatePaymentStatus(
-    docId,
-    paymentId,
-    status,
-  );
+  const orderData = await orderRepository.updatePaymentStatus(docId, paymentId, status);
 
-  // Post-payment actions
   if (status.toLowerCase() === "paid") {
     await sendOrderConfirmedSMS(orderId);
     await sendOrderConfirmedEmail(orderId);
@@ -57,399 +50,161 @@ export const updatePayment = async (
   await updateOrAddOrderHash(orderData);
 };
 
-/**
- * Add a new order from the website
- */
 export const addWebOrder = async (order: Partial<Order>) => {
   if (!order.orderId) throw new AppError("Order ID is required", 400);
   if (!order.items?.length) throw new AppError("Order items are required", 400);
 
-  // --- OTP Verification check for COD ---
+  // OTP Check for COD
   const isCOD = order.paymentMethodId === "PM-001";
   const userPhone = order.customer?.phone;
-
   if (isCOD) {
-    if (!userPhone) {
-      throw new AppError("Phone number is required for Cash on Delivery orders", 400);
-    }
+    if (!userPhone) throw new AppError("Phone number is required for COD", 400);
     const isVerified = await isOTPVerifiedRecently(userPhone);
-    if (!isVerified) {
-      throw new AppError("Please verify your phone number via OTP to place a Cash on Delivery order.", 400);
-    }
+    if (!isVerified) throw new AppError("Please verify your phone number via OTP", 400);
   }
 
-  const orderRef = adminFirestore.collection("orders").doc(order.orderId);
-  const now = admin.firestore.Timestamp.now();
+  // Get online stock ID from settings
+  const erpSettings = await settingsRepository.getErpSettings();
+  const stockId = erpSettings?.onlineStockId;
+  if (!stockId) throw new AppError("Online stock location not configured", 500);
+
+  // Fetch product data in batch
+  const productIds = order.items.map((i) => i.itemId);
+  const products = await productRepository.findByIds(productIds);
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  // Business Logic: Enrich items and calculate discounts
+  order.items = order.items.map((item) => ({
+    ...item,
+    bPrice: productMap.get(item.itemId)?.buyingPrice || 0,
+  }));
 
   let finalDiscount = 0;
   let appliedCouponId: string | null = null;
-  let promotionDiscount = 0;
-  let appliedPromotionId: string | null = null;
-  let appliedPromotionIds: string[] = [];
-
-  const orderData: Order = {
-    ...order,
-    from: "Website",
-    sourceName: order.sourceName || "Website",
-    storeName: order.storeName || "Online Store",
-    userId: order.userId || null,
-    createdAt: now,
-
-    updatedAt: now,
-  } as Order;
-
-  try {
-    const productRefs = order.items.map((i) =>
-      adminFirestore.collection("products").doc(i.itemId),
-    );
-    const productSnaps = await adminFirestore.getAll(...productRefs);
-    const productMap = new Map(
-      productSnaps.map((snap) => [snap.id, snap.data() as Product]),
-    );
-
-    // Set bPrice on items from server-side product data
-    order.items = order.items.map((item) => {
+  if (order.couponCode) {
+    const cartTotal = order.items.reduce((acc, item) => {
       const prod = productMap.get(item.itemId);
-      return {
-        ...item,
-        bPrice: prod?.buyingPrice || 0,
-      };
-    });
-    orderData.items = order.items;
+      return acc + ((prod?.sellingPrice || 0) * item.quantity - (item.discount || 0));
+    }, 0);
 
-    // Validate Coupon if exists
-    if (order.couponCode) {
-      const cartTotal = order.items.reduce((acc, item) => {
-        const prod = productMap.get(item.itemId);
-        const price = prod ? prod.sellingPrice : 0;
-        const discount = item.discount || 0;
-        return acc + (price * item.quantity - discount);
-      }, 0);
-
-      const cartItems = order.items.map((i) => ({
+    const validation = await validateCoupon(
+      order.couponCode,
+      order.customer?.id || "guest",
+      cartTotal,
+      order.items.map(i => ({
         productId: i.itemId,
         variantId: i.variantId,
         quantity: i.quantity,
         price: productMap.get(i.itemId)?.sellingPrice || 0,
         discount: i.discount,
-      }));
-
-      const validation = await validateCoupon(
-        order.couponCode,
-        order.customer?.id || "guest",
-        cartTotal,
-        cartItems,
-      );
-      if (!validation.valid) {
-        throw new AppError(`Coupon Invalid: ${validation.message}`, 400);
-      }
-
-      finalDiscount = validation.discount || 0;
-      appliedCouponId = validation.coupon?.id || null;
-    }
-
-    // Apply automatic promotions
-    const cartTotal = order.items.reduce((acc, item) => {
-      const prod = productMap.get(item.itemId);
-      const price = prod ? prod.sellingPrice : 0;
-      const discount = item.discount || 0;
-      return acc + (price * item.quantity - discount);
-    }, 0);
-
-    const promoResult = await calculateCartDiscount(
-      order.items.map((i) => {
-        const prod = productMap.get(i.itemId);
-        return {
-          productId: i.itemId,
-          variantId: i.variantId || "",
-          quantity: i.quantity,
-          price: prod?.sellingPrice || 0,
-          discount: i.discount || 0,
-          category: prod?.category,
-          brand: prod?.brand,
-        };
-      }),
-      cartTotal,
-      order.customer?.id || null,
+      })),
     );
+    if (!validation.valid) throw new AppError(`Coupon Invalid: ${validation.message}`, 400);
+    finalDiscount = validation.discount || 0;
+    appliedCouponId = validation.coupon?.id || null;
+  }
 
-    if (promoResult.promotions && promoResult.promotions.length > 0) {
-      promotionDiscount = promoResult.totalDiscount;
-      appliedPromotionId = promoResult.promotions[0].id;
-      appliedPromotionIds = promoResult.promotions.map((p) => p.id);
-    }
+  // Automatic promotions
+  const cartTotal = order.items.reduce((acc, item) => {
+    const prod = productMap.get(item.itemId);
+    return acc + ((prod?.sellingPrice || 0) * item.quantity - (item.discount || 0));
+  }, 0);
 
-    // --- SERVER-SIDE TOTAL VALIDATION ---
-    const SHIPPING_FLAT_RATE_1 = 380;
-    const SHIPPING_FLAT_RATE_2 = 500;
-    const TOLERANCE = 1;
+  const promoResult = await calculateCartDiscount(
+    order.items.map((i) => {
+      const prod = productMap.get(i.itemId);
+      return {
+        productId: i.itemId,
+        variantId: i.variantId || "",
+        quantity: i.quantity,
+        price: prod?.sellingPrice || 0,
+        discount: i.discount || 0,
+        category: prod?.category,
+        brand: prod?.brand,
+      };
+    }),
+    cartTotal,
+    order.customer?.id || null,
+  );
 
-    const itemsTotal = order.items.reduce((acc, item) => {
-      const prod = productMap.get(item.itemId);
-      const price = prod ? prod.sellingPrice : 0;
-      return acc + price * item.quantity;
-    }, 0);
+  let promotionDiscount = promoResult.totalDiscount || 0;
+  let appliedPromotionIds = promoResult.promotions?.map(p => p.id) || [];
 
-    const itemDiscounts = order.items.reduce(
-      (acc, item) => acc + (item.discount || 0),
-      0,
-    );
+  // Shipping Logic
+  const totalWeight = order.items.reduce((acc, item) => {
+    const prod = productMap.get(item.itemId);
+    return acc + (((prod?.weight || 1000) / 1000) * item.quantity);
+  }, 0);
 
-    // Combo validation
-    const comboItems = order.items.filter(
-      (item) => item.itemType === "combo" && item.comboId,
-    );
-    if (comboItems.length > 0) {
-      const comboGroups = new Map<string, typeof comboItems>();
-      for (const item of comboItems) {
-        const group = comboGroups.get(item.comboId!) || [];
-        group.push(item);
-        comboGroups.set(item.comboId!, group);
-      }
-
-      for (const [comboId, items] of Array.from(comboGroups)) {
-        const comboDoc = await adminFirestore
-          .collection("combo_products")
-          .doc(comboId)
-          .get();
-        if (comboDoc.exists) {
-          const comboData = comboDoc.data();
-          if (comboData) {
-            const expectedTotalDiscount =
-              (comboData.originalPrice || 0) - (comboData.comboPrice || 0);
-            const claimedTotalDiscount = items.reduce(
-              (acc, item) => acc + (item.discount || 0),
-              0,
-            );
-            if (Math.abs(claimedTotalDiscount - expectedTotalDiscount) > 2) {
-              throw new AppError(
-                `Invalid combo discount detected. Please refresh and try again.`,
-                400,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // Shipping calculation
-    const totalItems = order.items.reduce(
-      (acc, item) => acc + item.quantity,
-      0,
-    );
-    let totalWeight = 0;
-    for (const item of order.items) {
-      const prod = productMap.get(item.itemId);
-      totalWeight += ((prod?.weight || 1000) / 1000) * item.quantity;
-    }
-
-    let serverShippingFee = 0;
-    const rulesSnapshot = await adminFirestore
-      .collection("shipping_rules")
-      .where("isActive", "==", true)
-      .get();
-
-    if (!rulesSnapshot.empty) {
-      const rules = rulesSnapshot.docs.map((doc) => doc.data() as ShippingRule);
-      const match = rules.find(
-        (r) => totalWeight >= r.minWeight && totalWeight < r.maxWeight,
-      );
-      if (match) {
-        if (
-          match.isIncremental &&
-          match.baseWeight !== undefined &&
-          match.perKgRate !== undefined
-        ) {
-          const extraWeight = Math.max(0, totalWeight - match.baseWeight);
-          serverShippingFee =
-            match.rate + Math.ceil(extraWeight) * match.perKgRate;
-        } else {
-          serverShippingFee = match.rate;
-        }
+  let serverShippingFee = 0;
+  const shippingRules = await shippingRepository.findActiveRules();
+  if (shippingRules.length > 0) {
+    const match = shippingRules.find(r => totalWeight >= r.minWeight && totalWeight < r.maxWeight);
+    if (match) {
+      if (match.isIncremental && match.baseWeight !== undefined && match.perKgRate !== undefined) {
+        serverShippingFee = match.rate + Math.ceil(Math.max(0, totalWeight - match.baseWeight)) * match.perKgRate;
       } else {
-        rules.sort((a, b) => b.maxWeight - a.maxWeight);
-        if (totalWeight >= rules[0].maxWeight) {
-          const maxRule = rules[0];
-          if (
-            maxRule.isIncremental &&
-            maxRule.baseWeight !== undefined &&
-            maxRule.perKgRate !== undefined
-          ) {
-            const extraWeight = Math.max(0, totalWeight - maxRule.baseWeight);
-            serverShippingFee =
-              maxRule.rate + Math.ceil(extraWeight) * maxRule.perKgRate;
-          } else {
-            serverShippingFee = maxRule.rate;
-          }
-        } else {
-          serverShippingFee =
-            totalItems <= 1 ? SHIPPING_FLAT_RATE_1 : SHIPPING_FLAT_RATE_2;
-        }
-      }
-    } else {
-      serverShippingFee =
-        totalItems === 0
-          ? 0
-          : totalItems === 1
-            ? SHIPPING_FLAT_RATE_1
-            : SHIPPING_FLAT_RATE_2;
-    }
-
-    if (
-      promoResult.promotions?.some(
-        (p) => p.type === "FREE_SHIPPING" || p.actions?.[0]?.type === "FREE_SHIPPING"
-      )
-    ) {
-      serverShippingFee = 0;
-    }
-
-    const subtotalBeforeFees = itemsTotal - itemDiscounts;
-    const serverPaymentFee = parseFloat(
-      (
-        (subtotalBeforeFees *
-          (order.fee ? (order.fee / subtotalBeforeFees) * 100 : 0)) /
-        100
-      ).toFixed(2),
-    );
-
-    const serverSubtotal =
-      itemsTotal - itemDiscounts + serverShippingFee + serverPaymentFee;
-    const serverTotalWithPromo =
-      serverSubtotal - finalDiscount - promotionDiscount;
-    const serverTotalWithoutPromo = serverSubtotal - finalDiscount;
-
-    const frontendTotal = order.total || 0;
-    let serverTotal = serverTotalWithPromo;
-    if (Math.abs(serverTotalWithoutPromo - frontendTotal) <= TOLERANCE) {
-      serverTotal = serverTotalWithoutPromo;
-    }
-
-    if (Math.abs(serverTotal - frontendTotal) > TOLERANCE) {
-      throw new AppError(
-        `Order total mismatch. Expected Rs. ${serverTotal.toFixed(
-          2,
-        )}, received Rs. ${frontendTotal.toFixed(
-          2,
-        )}. Please refresh and try again.`,
-        400,
-      );
-    }
-
-    orderData.appliedCouponId = appliedCouponId;
-    orderData.appliedPromotionId = appliedPromotionId;
-    orderData.appliedPromotionIds = appliedPromotionIds;
-    orderData.promotionDiscount = promotionDiscount;
-    orderData.discount = finalDiscount;
-
-    // --- TRANSACTION ---
-    let success = false;
-    const settingsSnap = await adminFirestore
-      .collection("app_settings")
-      .doc("erp_settings")
-      .get();
-    const stockId = settingsSnap.data()?.onlineStockId;
-    if (!settingsSnap.exists || !stockId)
-      throw new AppError("ERP settings or onlineStockId missing", 500);
-
-    orderData.stockId = stockId;
-
-    for (let attempt = 1; attempt <= 3 && !success; attempt++) {
-      try {
-        await adminFirestore.runTransaction(async (tx) => {
-          const inventoryUpdates = [];
-          for (const item of order.items!) {
-            const invQuery = adminFirestore
-              .collection("stock_inventory")
-              .where("productId", "==", item.itemId)
-              .where("variantId", "==", item.variantId)
-              .where("size", "==", item.size)
-              .where("stockId", "==", stockId)
-              .limit(1);
-
-            const invSnap = await tx.get(invQuery);
-            if (invSnap.empty)
-              throw new AppError(`Inventory not found for ${item.name}`, 404);
-            inventoryUpdates.push({
-              invDoc: invSnap.docs[0],
-              invData: invSnap.docs[0].data() as InventoryItem,
-              item,
-            });
-          }
-
-          for (const { invDoc, invData, item } of inventoryUpdates) {
-            const prodData = productMap.get(item.itemId);
-            if (!prodData)
-              throw new AppError(`Product not found: ${item.itemId}`, 404);
-            const newInvQty = (invData.quantity ?? 0) - item.quantity;
-            if (newInvQty < 0)
-              throw new AppError(`Insufficient stock for ${item.name}`, 400);
-            
-            tx.update(invDoc.ref, { quantity: newInvQty });
-          }
-
-          tx.set(orderRef, {
-            ...orderData,
-            customer: {
-              ...order.customer,
-              updatedAt: now,
-              createdAt: now,
-            },
-          });
-        });
-
-        if (appliedCouponId) {
-          await trackCouponUsage(
-            appliedCouponId,
-            order.customer?.id || "guest",
-            order.orderId!,
-            finalDiscount,
-          );
-        }
-
-        // --- Track Promotion Usage ---
-        if (appliedPromotionIds && appliedPromotionIds.length > 0) {
-          for (const promoId of appliedPromotionIds) {
-            await adminFirestore
-              .collection("promotions")
-              .doc(promoId)
-              .update({
-                usageCount: admin.firestore.FieldValue.increment(1),
-              });
-          }
-        }
-
-        // --- Consume OTP verification for COD ---
-        if (isCOD && userPhone) {
-          await consumeOTPVerification(userPhone);
-        }
-
-        // --- Create Admin Notification for New Order ---
-        await createAdminNotification(
-          "ORDER",
-          "New Website Order",
-          `Order #${order.orderId?.toUpperCase()} placed by ${order.customer?.name || "Guest"}. Total: Rs.${order.total?.toFixed(2)}`,
-          { orderId: order.orderId, customerName: order.customer?.name }
-        );
-        
-        success = true;
-      } catch (err) {
-        if (attempt === 3) throw err;
-        await new Promise((r) => setTimeout(r, attempt * 200));
+        serverShippingFee = match.rate;
       }
     }
+  }
 
-    const orderForHashSnap = await orderRef.get();
-    const orderForHash = orderForHashSnap.data();
-    if (orderForHash) await updateOrAddOrderHash(orderForHash);
+  if (promoResult.promotions?.some(p => p.type === "FREE_SHIPPING" || p.actions?.[0]?.type === "FREE_SHIPPING")) {
+    serverShippingFee = 0;
+  }
+
+  // Transaction for stock deduction and order save
+  try {
+    await orderRepository.runTransaction(async (tx) => {
+      for (const item of order.items!) {
+        await inventoryRepository.deductStock(tx, item.itemId, item.variantId, item.size, stockId, item.quantity);
+      }
+
+      const now = new Date();
+      const orderData: Order = {
+        ...order,
+        from: "Website",
+        sourceName: order.sourceName || "Website",
+        storeName: order.storeName || "Online Store",
+        userId: order.userId || null,
+        stockId,
+        appliedCouponId,
+        appliedPromotionId: appliedPromotionIds[0] || null,
+        appliedPromotionIds,
+        promotionDiscount,
+        discount: finalDiscount,
+        createdAt: now as any,
+        updatedAt: now as any,
+        customer: {
+          ...order.customer,
+          updatedAt: now,
+          createdAt: now,
+        },
+      } as Order;
+
+      await orderRepository.create(order.orderId!, orderData, tx);
+    });
+
+    // Post-transaction tasks
+    if (appliedCouponId) {
+      await trackCouponUsage(appliedCouponId, order.customer?.id || "guest", order.orderId!, finalDiscount);
+    }
+    for (const promoId of appliedPromotionIds) {
+      await promotionRepository.incrementUsageCount(promoId);
+    }
+    if (isCOD && userPhone) await consumeOTPVerification(userPhone);
+
+    await createAdminNotification("ORDER", "New Website Order", `Order #${order.orderId?.toUpperCase()} placed by ${order.customer?.name || "Guest"}.`, { orderId: order.orderId });
+    
+    const savedOrder = await orderRepository.findById(order.orderId!);
+    if (savedOrder) await updateOrAddOrderHash(savedOrder);
+
   } catch (error) {
     console.error("❌ addWebOrder failed:", error);
     throw error;
   }
 };
 
-/**
- * Get all orders for a specific user ID
- */
 export const getOrdersByUserId = async (userId: string, limit: number = 50) => {
   return await orderRepository.findByUserId(userId, limit);
 };

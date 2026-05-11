@@ -1,14 +1,13 @@
 import { getSliders } from "@/services/OtherService";
 import { NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
+import { handleAuthError } from "@/services/AuthService";
 
 export const GET = async () => {
   try {
     const sliders = await getSliders();
     return NextResponse.json(sliders);
   } catch (error: unknown) {
-    console.error("[Sliders API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

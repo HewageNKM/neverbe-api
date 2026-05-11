@@ -1,44 +1,35 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getNavigationConfig,
   saveNavigationConfig,
 } from "@/services/WebsiteService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "view_website");
     const config = await getNavigationConfig();
     return NextResponse.json(config);
   } catch (error: any) {
-    console.error("[Navigation API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "update_website");
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
     await saveNavigationConfig(body);
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("[Navigation API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

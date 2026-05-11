@@ -1,40 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   createRole,
   getAllRoles,
   getAllPermissions,
 } from "@/services/RoleService";
-import { AppError } from "@/utils/apiResponse";
 
 export async function GET(req: NextRequest) {
-  if (!(await authorizeRequest(req, "manage_roles"))) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    await requirePermission(req, "manage_roles");
+
     const roles = await getAllRoles();
     const permissions = getAllPermissions();
     return NextResponse.json({ roles, permissions });
   } catch (e: any) {
-    return NextResponse.json(
-      { message: e.message || "Failed to fetch roles" },
-      { status: 500 }
-    );
+    return handleAuthError(e);
   }
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await authorizeRequest(req, "manage_roles"))) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    await requirePermission(req, "manage_roles");
+
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return NextResponse.json({ message: "Missing data field" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
@@ -44,10 +36,6 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (e: any) {
-    const status = e instanceof AppError ? e.statusCode : 500;
-    return NextResponse.json(
-      { message: e.message || "Failed to create role" },
-      { status }
-    );
+    return handleAuthError(e);
   }
 }

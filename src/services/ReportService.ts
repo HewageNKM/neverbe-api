@@ -1,9 +1,17 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { orderRepository } from "@/repositories/OrderRepository";
+import { reportRepository } from "@/repositories/ReportRepository";
+import { brandRepository } from "@/repositories/BrandRepository";
+import { categoryRepository } from "@/repositories/CategoryRepository";
+import { productRepository } from "@/repositories/ProductRepository";
 import { Timestamp } from "firebase-admin/firestore";
 import { toSafeLocaleString } from "./UtilService";
 import { Order } from "@/model/Order";
-import { OrderItem } from "@/model/OrderItem";
 import dayjs from "dayjs";
+
+/**
+ * ReportService - Business logic for analytical reports
+ * Delegates data access to repositories
+ */
 
 export const getDailySaleReport = async (
   from: string,
@@ -11,35 +19,21 @@ export const getDailySaleReport = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders") as any;
+    const start = new Date(from);
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
 
-    if (status !== "all") {
-      if (status.toLowerCase() === "paid") {
-        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
-      } else {
-        query = query.where("paymentStatus", "==", status);
-      }
-    }
+    const data = await orderRepository.findForReport({
+      start,
+      end,
+      paymentStatus: status,
+    });
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    query = query.orderBy("createdAt", "desc");
-
-    const snap = await query.get();
-
-    const orders: any[] = snap.docs.map((d) => ({
-      orderId: d.id,
-      ...d.data(),
-      createdAt: toSafeLocaleString(d.data().createdAt),
-      updatedAt: toSafeLocaleString(d.data().updatedAt),
+    const orders: any[] = data.map((d) => ({
+      ...d,
+      orderId: (d as any).id,
+      createdAt: toSafeLocaleString(d.createdAt),
+      updatedAt: toSafeLocaleString(d.updatedAt),
     }));
 
     const getNetSale = (o: any) =>
@@ -222,34 +216,33 @@ export const getMonthlySummary = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders") as any;
+    const start = new Date(from);
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
 
-    if (status !== "all") {
-      if (status.toLowerCase() === "paid") {
-        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+    const data = await orderRepository.findForReport({
+      start,
+      end,
+      paymentStatus: status,
+    });
+
+    const orders: any[] = data.map((d) => {
+      // Handle the createdAt field conversion safely
+      let date: Date;
+      if (typeof (d.createdAt as any)?.toDate === "function") {
+        date = (d.createdAt as any).toDate();
+      } else if (d.createdAt instanceof Date) {
+        date = d.createdAt;
       } else {
-        query = query.where("paymentStatus", "==", status);
+        date = new Date(d.createdAt as any);
       }
-    }
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    query = query.orderBy("createdAt", "asc");
-    const snap = await query.get();
-
-    const orders: any[] = snap.docs.map((d) => ({
-      orderId: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt.toDate(),
-    }));
+      return {
+        ...d,
+        orderId: (d as any).id,
+        createdAt: date,
+      };
+    });
 
     const getNetSales = (o: any) =>
       (o.total || 0) - (o.transactionFeeCharge || 0);
@@ -438,34 +431,32 @@ export const getYearlySummary = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders") as any;
+    const start = new Date(from);
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
 
-    if (status !== "all") {
-      if (status.toLowerCase() === "paid") {
-        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+    const data = await orderRepository.findForReport({
+      start,
+      end,
+      paymentStatus: status,
+    });
+
+    const orders: any[] = data.map((d) => {
+      let date: Date;
+      if (typeof (d.createdAt as any)?.toDate === "function") {
+        date = (d.createdAt as any).toDate();
+      } else if (d.createdAt instanceof Date) {
+        date = d.createdAt;
       } else {
-        query = query.where("paymentStatus", "==", status);
+        date = new Date(d.createdAt as any);
       }
-    }
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    query = query.orderBy("createdAt", "asc");
-    const snap = await query.get();
-
-    const orders: any[] = snap.docs.map((d) => ({
-      orderId: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt.toDate(),
-    }));
+      return {
+        ...d,
+        orderId: (d as any).id,
+        createdAt: date,
+      };
+    });
 
     /// Gross sales = total - shipping + discount
     const getNetSales = (o: any) =>
@@ -716,31 +707,15 @@ export const getTopSellingProducts = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders") as any;
-
-    if (status !== "all") {
-      if (status.toLowerCase() === "paid") {
-        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
-      } else {
-        query = query.where("paymentStatus", "==", status);
-      }
-    }
-
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    query.limit(threshold || 10);
-    const snap = await query.get();
+    const data = await reportRepository.findOrdersForAnalysis({
+      start: from,
+      end: to,
+      paymentStatus: status,
+    });
+    
     const productMap: Record<string, any> = {};
 
-    snap.docs.forEach((doc) => {
-      const order: any = doc.data();
+    data.forEach((order: any) => {
       const orderItems = order.items || [];
       const orderGrossSales = orderItems.reduce(
         (sum: number, i: any) => sum + (i.price || 0) * i.quantity,
@@ -813,33 +788,16 @@ export const getSalesByCategory = async (
   status: string = "Paid",
 ) => {
   try {
-    let query = adminFirestore.collection("orders") as any;
-
-    if (status !== "all") {
-      if (status.toLowerCase() === "paid") {
-        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
-      } else {
-        query = query.where("paymentStatus", "==", status);
-      }
-    }
-
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    const snap = await query.get();
+    const data = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: status,
+    });
 
     const categoryMap: Record<string, any> = {};
     const productCache: Record<string, any> = {}; // cache products
 
-    for (const doc of snap.docs) {
-      const order: any = doc.data();
+    for (const order of data) {
       const orderItems = order.items || [];
       const orderGrossSales = orderItems.reduce(
         (sum: number, i: any) => sum + (i.price || 0) * i.quantity,
@@ -849,16 +807,11 @@ export const getSalesByCategory = async (
         (order.couponDiscount || 0) + (order.promotionDiscount || 0);
 
       for (const item of orderItems) {
-        // 3. Fetch product (with cache)
         let product: any;
         if (productCache[item.itemId]) {
           product = productCache[item.itemId];
         } else {
-          const productSnap = await adminFirestore
-            .collection("products")
-            .doc(item.itemId)
-            .get();
-          product = productSnap.exists ? productSnap.data() : null;
+          product = await productRepository.findById(item.itemId);
           productCache[item.itemId] = product;
         }
 
@@ -928,41 +881,30 @@ export const getSalesByCategory = async (
 
 export const getSalesByBrand = async (from?: string, to?: string) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "in", ["Paid", "PAID"]);
-
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    const snap = await query.get();
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: "Paid",
+    });
 
     const brandMap: Record<string, any> = {};
-    const productCache: Record<string, any> = {}; // reduce reads
 
-    for (const doc of snap.docs) {
-      const order = doc.data();
+    // Collect all product IDs
+    const productIds = new Set<string>();
+    orders.forEach((o) => {
+      o.items?.forEach((item: any) => {
+        if (item.itemId) productIds.add(item.itemId);
+      });
+    });
+
+    // Fetch products in batch
+    const products = await productRepository.findByIds(Array.from(productIds));
+    const productMap: Record<string, any> = {};
+    products.forEach((p) => (productMap[p.id] = p));
+
+    for (const order of orders) {
       for (const item of order.items || []) {
-        let product: any;
-
-        // Lookup from cache
-        if (productCache[item.itemId]) {
-          product = productCache[item.itemId];
-        } else {
-          const productSnap = await adminFirestore
-            .collection("products")
-            .doc(item.itemId)
-            .get();
-          product = productSnap.exists ? productSnap.data() : null;
-          productCache[item.itemId] = product;
-        }
+        const product = productMap[item.itemId] || null;
 
         const brand = product?.brand || "Unknown";
 
@@ -1025,25 +967,15 @@ export const getSalesVsDiscount = async (
   groupBy: "day" | "month" = "day",
 ) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "in", ["Paid", "PAID"]);
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: "Paid",
+    });
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end);
-    }
-
-    const snap = await query.get();
     const reportMap: Record<string, any> = {};
 
-    snap.docs.forEach((doc) => {
-      const order = doc.data();
+    orders.forEach((order) => {
       const dateObj = order.createdAt.toDate
         ? order.createdAt.toDate()
         : new Date(order.createdAt);
@@ -1101,26 +1033,15 @@ const toTitleCase = (str: string = "") => {
 
 export const getSalesByPaymentMethod = async (from?: string, to?: string) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "in", ["Paid", "PAID"]);
+    const data = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: "Paid",
+    });
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end);
-    }
-
-    const snap = await query.get();
     const map: Record<string, any> = {};
 
-    snap.docs.forEach((doc) => {
-      const order = doc.data() as any;
-
+    data.forEach((order: any) => {
       // === CASE 1: Split payments ===
       if (order.paymentReceived?.length) {
         order.paymentReceived.forEach((p: any) => {
@@ -1174,21 +1095,11 @@ export const getSalesByPaymentMethod = async (from?: string, to?: string) => {
 
 export const getRefundsAndReturns = async (from?: string, to?: string) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "in", ["Refunded"]);
-
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", start)
-        .where("createdAt", "<=", end);
-    }
-
-    const snap = await query.get();
+    const data = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: ["Refunded"],
+    });
 
     const result = {
       totalOrders: 0,
@@ -1197,8 +1108,7 @@ export const getRefundsAndReturns = async (from?: string, to?: string) => {
       items: [] as any[],
     };
 
-    snap.docs.forEach((doc) => {
-      const order = doc.data() as any;
+    data.forEach((order: any) => {
 
       let refundAmount = 0;
 
@@ -1261,20 +1171,8 @@ export const fetchLiveStock = async (
   };
 }> => {
   try {
-    let query: any = adminFirestore.collection("stock_inventory");
-
-    if (stockId !== "all") {
-      query = query.where("stockId", "==", stockId);
-    }
-
-    const countSnapshot = await query.count().get();
-    const nbHits = countSnapshot.data().count;
-
-    const snapshot = await query.limit(1000).get();
-    const hits = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-
-    const inventoryDocs = hits;
-    const total = nbHits;
+    const inventoryDocs = await reportRepository.findStockInventory({ stockId });
+    const total = inventoryDocs.length;
     const stockList: LiveStockItem[] = [];
     const productIds = Array.from(
       new Set(inventoryDocs.map((d: any) => d.productId)),
@@ -1292,31 +1190,15 @@ export const fetchLiveStock = async (
         return result;
       }, []);
 
-    // Fetch products in batches of 30
+    // Fetch products in batches
+    const products = await reportRepository.findDocsInBatch("products", "productId", productIds);
     const productMap: Record<string, any> = {};
-    for (const chunk of chunkArray(productIds, 30)) {
-      const productSnaps = await adminFirestore
-        .collection("products")
-        .where("productId", "in", chunk)
-        .get();
-      productSnaps.docs.forEach((p) => {
-        const data = p.data();
-        productMap[data.productId] = data;
-      });
-    }
+    products.forEach(p => productMap[p.productId] = p);
 
-    // Fetch stocks in batches of 30
+    // Fetch stocks in batches
+    const stocks = await reportRepository.findDocsInBatch("stocks", "id", stockIds);
     const stockMap: Record<string, any> = {};
-    for (const chunk of chunkArray(stockIds, 30)) {
-      const stockSnaps = await adminFirestore
-        .collection("stocks")
-        .where("id", "in", chunk)
-        .get();
-      stockSnaps.docs.forEach((s) => {
-        const data = s.data();
-        stockMap[data.id] = data;
-      });
-    }
+    stocks.forEach(s => stockMap[s.id] = s);
 
     let totalQuantity = 0;
     let totalValuation = 0;
@@ -1393,80 +1275,32 @@ export const fetchLowStock = async (
   };
 }> => {
   try {
-    // Build query
-    let inventoryQuery: FirebaseFirestore.Query = adminFirestore
-      .collection("stock_inventory")
-      .where("quantity", "<=", threshold)
-      .orderBy("quantity", "asc");
-
-    if (stockId !== "all") {
-      inventoryQuery = inventoryQuery.where("stockId", "==", stockId);
-    }
-
-    // Fetch paginated inventory
-    const inventorySnap = await inventoryQuery.get();
-
-    // Total count
-    const totalSnap =
-      stockId === "all"
-        ? await adminFirestore
-          .collection("stock_inventory")
-          .where("quantity", "<=", threshold)
-          .get()
-        : await adminFirestore
-          .collection("stock_inventory")
-          .where("quantity", "<=", threshold)
-          .where("stockId", "==", stockId)
-          .get();
-
-    const total = totalSnap.size;
+    // Fetch inventory
+    const inventoryDocs = await reportRepository.findStockInventory({ 
+      stockId: stockId === "all" ? undefined : stockId,
+      quantityThreshold: threshold 
+    });
+    const total = inventoryDocs.length;
 
     const stockList: LowStockItem[] = [];
 
-    // Collect productIds and stockIds
-    const productIds = inventorySnap.docs.map((d) => d.data().productId);
-    const stockIds = inventorySnap.docs.map((d) => d.data().stockId);
+    // Collect IDs
+    const productIds = Array.from(new Set(inventoryDocs.map((d) => d.productId)));
+    const stockIds = Array.from(new Set(inventoryDocs.map((d) => d.stockId)));
 
-    // Helper for batching 'in' queries (max 30)
-    const batchFetch = async (
-      collection: string,
-      field: string,
-      ids: string[],
-    ) => {
-      const chunks: string[][] = [];
-      for (let i = 0; i < ids.length; i += 30)
-        chunks.push(ids.slice(i, i + 30));
-
-      const result: FirebaseFirestore.DocumentData[] = [];
-      for (const chunk of chunks) {
-        const snap = await adminFirestore
-          .collection(collection)
-          .where(field, "in", chunk)
-          .get();
-        snap.docs.forEach((d) => result.push(d.data()));
-      }
-      return result;
-    };
-
-    // Fetch products
-    const products = productIds.length
-      ? await batchFetch("products", "productId", productIds)
-      : [];
+    // Fetch products and stocks in batches
+    const products = await reportRepository.findDocsInBatch("products", "productId", productIds);
     const productMap: Record<string, any> = {};
     products.forEach((p) => (productMap[p.productId] = p));
 
-    // Fetch stocks
-    const stocks = stockIds.length
-      ? await batchFetch("stocks", "id", stockIds)
-      : [];
+    const stocks = await reportRepository.findDocsInBatch("stocks", "id", stockIds);
     const stockMap: Record<string, any> = {};
     stocks.forEach((s) => (stockMap[s.id] = s));
 
     let totalQuantity = 0;
     let totalValuation = 0;
 
-    inventorySnap.docs.forEach((d) => {
-      const data = d.data();
+    inventoryDocs.forEach((data) => {
       const product = productMap[data.productId];
       const stock = stockMap[data.stockId];
 
@@ -1480,7 +1314,7 @@ export const fetchLowStock = async (
       totalValuation += valuation;
 
       stockList.push({
-        id: d.id,
+        id: data.id,
         productId: data.productId,
         productName: product?.name || "",
         variantId: data.variantId,
@@ -1542,63 +1376,31 @@ export const fetchStockValuationByStock = async (
   stockId: string,
 ): Promise<{ stock: StockValuationItem[]; summary: StockValuationSummary }> => {
   try {
-    let inventoryQuery: FirebaseFirestore.Query =
-      adminFirestore.collection("stock_inventory");
+    const inventoryDocs = await reportRepository.findStockInventory({ stockId });
 
-    if (stockId !== "all") {
-      inventoryQuery = inventoryQuery.where("stockId", "==", stockId);
-    }
-
-    const inventorySnap = await inventoryQuery.get();
-
-    if (inventorySnap.empty) {
+    if (inventoryDocs.length === 0) {
       return {
         stock: [],
         summary: { totalProducts: 0, totalQuantity: 0, totalValuation: 0 },
       };
     }
 
-    const inventoryDocs = inventorySnap.docs;
-    const productIds = Array.from(
-      new Set(inventoryDocs.map((d) => d.data().productId)),
-    );
-    const stockIds = Array.from(
-      new Set(inventoryDocs.map((d) => d.data().stockId)),
-    );
+    const productIds = Array.from(new Set(inventoryDocs.map((d) => d.productId)));
+    const stockIds = Array.from(new Set(inventoryDocs.map((d) => d.stockId)));
 
-    // Fetch products in chunks of 30
+    // Fetch products and stocks in batches
+    const products = await reportRepository.findDocsInBatch("products", "productId", productIds);
     const productMap: Record<string, any> = {};
-    const productChunks = chunkArray(productIds, 30);
-    for (const chunk of productChunks) {
-      const snap = await adminFirestore
-        .collection("products")
-        .where("productId", "in", chunk)
-        .get();
-      snap.docs.forEach((p) => {
-        const data = p.data();
-        productMap[data.productId] = data;
-      });
-    }
+    products.forEach((p) => (productMap[p.productId] = p));
 
-    // Fetch stocks in chunks of 30
+    const stocks = await reportRepository.findDocsInBatch("stocks", "id", stockIds);
     const stockMap: Record<string, any> = {};
-    const stockChunks = chunkArray(stockIds, 30);
-    for (const chunk of stockChunks) {
-      const snap = await adminFirestore
-        .collection("stocks")
-        .where("id", "in", chunk)
-        .get();
-      snap.docs.forEach((s) => {
-        const data = s.data();
-        stockMap[data.id] = data;
-      });
-    }
+    stocks.forEach((s) => (stockMap[s.id] = s));
 
     let totalQuantity = 0;
     let totalValuation = 0;
 
-    const stockList: StockValuationItem[] = inventoryDocs.map((d) => {
-      const data = d.data();
+    const stockList: StockValuationItem[] = inventoryDocs.map((data) => {
       const product = productMap[data.productId];
       const stockData = stockMap[data.stockId];
       const variant =
@@ -1611,7 +1413,7 @@ export const fetchStockValuationByStock = async (
       totalValuation += valuation;
 
       return {
-        id: d.id,
+        id: data.id,
         productId: data.productId,
         productName: product?.name || "",
         variantId: data.variantId,
@@ -1669,26 +1471,22 @@ export const getDailyRevenueReport = async (
   toDate.setHours(23, 59, 59, 999);
 
   // Fetch paid orders
-  const ordersSnapshot = await adminFirestore
-    .collection("orders")
-    .where("paymentStatus", "in", ["Paid", "PAID"])
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const ordersData = await reportRepository.findOrdersForAnalysis({
+    start: fromDate,
+    end: toDate,
+    paymentStatus: "Paid",
+  });
 
   // Fetch approved expenses
-  const expensesSnapshot = await adminFirestore
-    .collection("expenses")
-    // .where("type", "==", "expense") // Include income
-    .where("status", "==", "APPROVED")
-    .where("date", ">=", Timestamp.fromDate(fromDate))
-    .where("date", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const expensesData = await reportRepository.findExpensesForReport({
+    start: fromDate,
+    end: toDate,
+    status: "APPROVED",
+  });
 
   // Group orders by date
   const ordersByDate: Record<string, Order[]> = {};
-  ordersSnapshot.forEach((doc) => {
-    const order = doc.data() as Order;
+  ordersData.forEach((order) => {
     const dateStr = (order.createdAt as Timestamp)
       .toDate()
       .toISOString()
@@ -1700,8 +1498,7 @@ export const getDailyRevenueReport = async (
   // Group expenses by date
   const expensesByDate: Record<string, number> = {};
   const incomeByDate: Record<string, number> = {};
-  expensesSnapshot.forEach((doc) => {
-    const expense = doc.data();
+  expensesData.forEach((expense) => {
     const dateStr = (expense.date as Timestamp)
       .toDate()
       .toISOString()
@@ -1846,26 +1643,22 @@ export const getMonthlyRevenueReport = async (
   toDate.setHours(23, 59, 59, 999);
 
   // Fetch paid orders
-  const ordersSnapshot = await adminFirestore
-    .collection("orders")
-    .where("paymentStatus", "in", ["Paid", "PAID"])
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const ordersData = await reportRepository.findOrdersForAnalysis({
+    start: fromDate,
+    end: toDate,
+    paymentStatus: "Paid",
+  });
 
   // Fetch approved expenses
-  const expensesSnapshot = await adminFirestore
-    .collection("expenses")
-    // .where("type", "==", "expense") // Fetch all to include income
-    .where("status", "==", "APPROVED")
-    .where("date", ">=", Timestamp.fromDate(fromDate))
-    .where("date", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const expensesData = await reportRepository.findExpensesForReport({
+    start: fromDate,
+    end: toDate,
+    status: "APPROVED",
+  });
 
   // Group orders by month YYYY-MM
   const ordersByMonth: Record<string, Order[]> = {};
-  ordersSnapshot.forEach((doc) => {
-    const order = doc.data() as Order;
+  ordersData.forEach((order) => {
     const date = (order.createdAt as Timestamp).toDate();
 
     const monthStr = `${date.getFullYear()}-${String(
@@ -1879,8 +1672,7 @@ export const getMonthlyRevenueReport = async (
   // Group expenses by month YYYY-MM
   const expensesByMonth: Record<string, number> = {};
   const incomeByMonth: Record<string, number> = {};
-  expensesSnapshot.forEach((doc) => {
-    const expense = doc.data();
+  expensesData.forEach((expense) => {
     const date = (expense.date as Timestamp).toDate();
 
     const monthStr = `${date.getFullYear()}-${String(
@@ -2031,26 +1823,22 @@ export const getYearlyRevenueReport = async (
   toDate.setHours(23, 59, 59, 999);
 
   // Fetch paid orders
-  const ordersSnapshot = await adminFirestore
-    .collection("orders")
-    .where("paymentStatus", "in", ["Paid", "PAID"])
-    .where("createdAt", ">=", Timestamp.fromDate(fromDate))
-    .where("createdAt", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const ordersData = await reportRepository.findOrdersForAnalysis({
+    start: fromDate,
+    end: toDate,
+    paymentStatus: "Paid",
+  });
 
   // Fetch approved expenses
-  const expensesSnapshot = await adminFirestore
-    .collection("expenses")
-    // .where("type", "==", "expense") // Include income
-    .where("status", "==", "APPROVED")
-    .where("date", ">=", Timestamp.fromDate(fromDate))
-    .where("date", "<=", Timestamp.fromDate(toDate))
-    .get();
+  const expensesData = await reportRepository.findExpensesForReport({
+    start: fromDate,
+    end: toDate,
+    status: "APPROVED",
+  });
 
   // Group orders by year YYYY
   const ordersByYear: Record<string, Order[]> = {};
-  ordersSnapshot.forEach((doc) => {
-    const order = doc.data() as Order;
+  ordersData.forEach((order) => {
     const date = (order.createdAt as Timestamp).toDate();
     const yearStr = String(date.getFullYear());
 
@@ -2061,8 +1849,7 @@ export const getYearlyRevenueReport = async (
   // Group expenses by year YYYY
   const expensesByYear: Record<string, number> = {};
   const incomeByYear: Record<string, number> = {};
-  expensesSnapshot.forEach((doc) => {
-    const expense = doc.data();
+  expensesData.forEach((expense) => {
     const date = (expense.date as Timestamp).toDate();
     const yearStr = String(date.getFullYear());
 
@@ -2181,52 +1968,29 @@ export const getYearlyRevenueReport = async (
 
 export const getCashFlowReport = async (from: string, to: string) => {
   try {
-    let query = adminFirestore
-      .collection("orders")
-      .where("paymentStatus", "in", ["Paid", "PAID"]);
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      paymentStatus: "Paid",
+    });
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      query = query
-        .where("createdAt", ">=", Timestamp.fromDate(start))
-        .where("createdAt", "<=", Timestamp.fromDate(end));
-    }
-
-    query = query.orderBy("createdAt", "desc");
-
-    const snap = await query.get();
-
-    const orders = snap.docs.map((d) => ({
-      orderId: d.id,
-      ...d.data(),
-      createdAt: toSafeLocaleString(d.data().createdAt),
+    const formattedOrders = orders.map((o) => ({
+      ...o,
+      orderId: o.id,
+      createdAt: toSafeLocaleString(o.createdAt),
     }));
 
     // Fetch approved expenses
-    let expenseQuery = adminFirestore
-      .collection("expenses")
-      .where("type", "==", "expense")
-      .where("status", "==", "APPROVED");
+    const expenses = await reportRepository.findExpensesForReport({
+      start: from ? new Date(from) : new Date(0),
+      end: to ? new Date(to) : new Date(),
+      type: "expense",
+      status: "APPROVED",
+    });
 
-    if (from && to) {
-      const start = new Date(from);
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-
-      expenseQuery = expenseQuery
-        .where("date", ">=", Timestamp.fromDate(start))
-        .where("date", "<=", Timestamp.fromDate(end));
-    }
-
-    const expenseSnap = await expenseQuery.get();
-
-    const expenses = expenseSnap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: toSafeLocaleString(d.data().createdAt),
+    const formattedExpenses = expenses.map((e) => ({
+      ...e,
+      createdAt: toSafeLocaleString(e.createdAt),
     }));
 
     // Helper calculations
@@ -2378,48 +2142,38 @@ export const getProfitLossStatement = async (
       `[ReportService] Generating P&L Statement from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(
-      dayjs(from).startOf("day").toDate(),
-    );
-    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
+    const start = dayjs(from).startOf("day").toDate();
+    const end = dayjs(to).endOf("day").toDate();
 
-    // Fetch orders
-    const ordersSnapshot = await adminFirestore
-      .collection("orders")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "not-in", ["Failed", "Refunded"])
-      .get();
+    // Fetch orders (exclude Failed/Refunded)
+    const allOrders = await reportRepository.findOrdersForAnalysis({
+      start,
+      end,
+      paymentStatus: "all",
+    });
+    const orders = allOrders.filter(o => !["Failed", "Refunded"].includes(o.paymentStatus));
 
     // Fetch expenses
-    const expensesSnapshot = await adminFirestore
-      .collection("expenses")
-      .where("type", "==", "expense")
-      .where("status", "==", "APPROVED")
-      .where("date", ">=", startTimestamp)
-      .where("date", "<=", endTimestamp)
-      .get();
+    const expenses = await reportRepository.findExpensesForReport({
+      start,
+      end,
+      type: "expense",
+      status: "APPROVED",
+    });
 
     // Collect product IDs for COGS
     const productIds = new Set<string>();
-    ordersSnapshot.docs.forEach((doc) => {
-      const order = doc.data() as Order;
+    orders.forEach((order) => {
       order.items?.forEach((item: any) => {
         if (item.itemId) productIds.add(item.itemId);
       });
     });
 
     // Fetch product costs
-    const productDocs = await Promise.all(
-      Array.from(productIds)
-        .filter((id) => id && id.trim() !== "")
-        .map((id) => adminFirestore.collection("products").doc(id).get()),
-    );
+    const products = await productRepository.findByIds(Array.from(productIds).filter(id => id && id.trim() !== ""));
     const productCostMap = new Map<string, number>();
-    productDocs.forEach((doc) => {
-      if (doc.exists) {
-        productCostMap.set(doc.id, doc.data()?.buyingPrice || 0);
-      }
+    products.forEach((p) => {
+      productCostMap.set(p.id, p.buyingPrice || 0);
     });
 
     // Calculate revenue
@@ -2430,8 +2184,7 @@ export const getProfitLossStatement = async (
     let totalProductCost = 0;
     let totalOrderFee = 0;
 
-    ordersSnapshot.docs.forEach((doc) => {
-      const order = doc.data() as Order;
+    orders.forEach((order) => {
       const orderTotal = order.total || 0;
       const shippingFee = order.shippingFee || 0;
       const orderFee = (order as any).fee || 0;
@@ -2458,8 +2211,7 @@ export const getProfitLossStatement = async (
 
     // Calculate expenses by category
     const expensesByCategory = new Map<string, number>();
-    expensesSnapshot.docs.forEach((doc) => {
-      const expense = doc.data();
+    expenses.forEach((expense) => {
       const category = expense.for || "Other";
       const amount = Number(expense.amount || 0);
       expensesByCategory.set(
@@ -2479,8 +2231,8 @@ export const getProfitLossStatement = async (
     );
 
     // Total Revenue is product sales + shipping + other fees
-    const totalShippingCollected = Array.from(ordersSnapshot.docs).reduce(
-      (sum, doc) => sum + (doc.data().shippingFee || 0),
+    const totalShippingCollected = orders.reduce(
+      (sum, order) => sum + (order.shippingFee || 0),
       0,
     );
     const totalRevenueValue = netSales + totalShippingCollected + totalOrderFee;
@@ -2569,27 +2321,15 @@ export const getExpenseReport = async (
       `[ReportService] Generating Expense Report from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(
-      dayjs(from).startOf("day").toDate(),
-    );
-    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
+    const expensesData = await reportRepository.findExpensesForReport({
+      start: dayjs(from).startOf("day").toDate(),
+      end: dayjs(to).endOf("day").toDate(),
+      category: category === "all" ? undefined : category,
+    });
 
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection("expenses")
-      .where("type", "==", "expense")
-      .where("date", ">=", startTimestamp)
-      .where("date", "<=", endTimestamp);
-
-    if (category && category !== "all") {
-      query = query.where("category", "==", category);
-    }
-
-    const snapshot = await query.get();
-
-    const expenses: ExpenseReportItem[] = snapshot.docs.map((doc) => {
-      const data = doc.data();
+    const expenses: ExpenseReportItem[] = expensesData.map((data) => {
       return {
-        id: doc.id,
+        id: data.id,
         date: toSafeLocaleString(data.date ?? data.createdAt),
         category: data.category || "Other",
         description: data.note || "",
@@ -2670,29 +2410,19 @@ export const getCustomerAnalytics = async (
       `[ReportService] Generating Customer Analytics from ${from} to ${to}`,
     );
 
-    const startTimestamp = Timestamp.fromDate(
-      dayjs(from).startOf("day").toDate(),
-    );
-    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
+    const start = dayjs(from).startOf("day").toDate();
+    const end = dayjs(to).endOf("day").toDate();
 
-    // Fetch orders in period
-    const ordersSnapshot = await adminFirestore
-      .collection("orders")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "in", ["Paid", "PAID"])
-      .get();
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start,
+      end,
+      paymentStatus: ["Paid", "PAID"],
+    });
 
-    // Fetch orders before this period to identify returning customers
-    const previousOrdersSnapshot = await adminFirestore
-      .collection("orders")
-      .where("createdAt", "<", startTimestamp)
-      .where("paymentStatus", "in", ["Paid", "PAID"])
-      .get();
+    const previousOrders = await reportRepository.findHistoricalOrders(start, ["Paid", "PAID"]);
 
     const previousCustomers = new Set<string>();
-    previousOrdersSnapshot.docs.forEach((doc) => {
-      const order = doc.data() as Order;
+    previousOrders.forEach((order) => {
       const customerId =
         order.customer?.id || order.customer?.phone || order.customer?.email;
       if (customerId) previousCustomers.add(customerId);
@@ -2712,8 +2442,7 @@ export const getCustomerAnalytics = async (
     const sourceCounts = new Map<string, number>();
     let totalRevenue = 0;
 
-    ordersSnapshot.docs.forEach((doc) => {
-      const order = doc.data() as Order;
+    orders.forEach((order: any) => {
       const customer = order.customer;
       const customerId =
         customer?.id || customer?.phone || customer?.email || "guest";
@@ -2739,7 +2468,7 @@ export const getCustomerAnalytics = async (
     });
 
     const totalCustomers = customerData.size;
-    const totalOrders = ordersSnapshot.size;
+    const totalOrders = orders.length;
 
     // Count new vs returning
     let newCustomers = 0;
@@ -2843,25 +2572,21 @@ export const getTaxReport = async (
     const { getTaxSettings } = await import("./TaxService");
     const taxSettings = await getTaxSettings();
 
-    const startTimestamp = Timestamp.fromDate(
-      dayjs(from).startOf("day").toDate(),
-    );
-    const endTimestamp = Timestamp.fromDate(dayjs(to).endOf("day").toDate());
+    const start = dayjs(from).startOf("day").toDate();
+    const end = dayjs(to).endOf("day").toDate();
 
-    const ordersSnapshot = await adminFirestore
-      .collection("orders")
-      .where("createdAt", ">=", startTimestamp)
-      .where("createdAt", "<=", endTimestamp)
-      .where("paymentStatus", "in", ["Paid", "PAID"])
-      .get();
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start,
+      end,
+      paymentStatus: ["Paid", "PAID"],
+    });
 
     const transactions: TaxReportItem[] = [];
     let totalSales = 0;
     let totalTaxableAmount = 0;
     let totalTaxCollected = 0;
 
-    ordersSnapshot.docs.forEach((doc) => {
-      const order = doc.data() as Order;
+    orders.forEach((order: any) => {
       const orderTotal = order.total || 0;
       const shippingFee = order.shippingFee || 0;
 
@@ -2879,7 +2604,7 @@ export const getTaxReport = async (
         totalSales += orderTotal;
         transactions.push({
           date: toSafeLocaleString(order.createdAt),
-          orderId: order.orderId || doc.id,
+          orderId: order.orderId || order.id,
           orderTotal,
           taxableAmount: 0,
           taxCollected: 0,
@@ -2906,7 +2631,7 @@ export const getTaxReport = async (
 
       transactions.push({
         date: toSafeLocaleString(order.createdAt),
-        orderId: order.orderId || doc.id,
+        orderId: order.orderId || order.id,
         orderTotal,
         taxableAmount,
         taxCollected: Math.round(taxCollected * 100) / 100,
@@ -2924,7 +2649,7 @@ export const getTaxReport = async (
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       ),
       summary: {
-        totalOrders: ordersSnapshot.size,
+        totalOrders: orders.length,
         totalSales,
         totalTaxableAmount,
         totalTaxCollected: Math.round(totalTaxCollected * 100) / 100,

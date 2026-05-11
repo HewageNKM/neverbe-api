@@ -1,25 +1,23 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getCustomerAnalytics } from "@/services/ReportService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_reports");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_reports");
 
     const url = new URL(req.url);
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
     if (!from || !to) {
-      return errorResponse("Missing required parameters: from, to", 400);
+      return NextResponse.json({ success: false, message: "Missing required parameters: from, to" }, { status: 400 });
     }
 
     const data = await getCustomerAnalytics(from, to);
     return NextResponse.json(data);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

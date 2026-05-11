@@ -7,6 +7,7 @@ export interface OrderItem {
   quantity: number;
   price: number;
   discount: number;
+  thumbnail?: string;
   itemType?: "PRODUCT" | "COMBO" | "combo";
   bPrice?: number; // Buying price for profit calculation
   comboId?: string; // Parent combo bundle ID

@@ -1,30 +1,28 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getSupplierById,
   updateSupplier,
   deleteSupplier,
 } from "@/services/SupplierService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "view_suppliers");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_suppliers");
 
     const { id } = await params;
     const supplier = await getSupplierById(id);
 
     if (!supplier) {
-      return errorResponse("Supplier not found", 404);
+      return NextResponse.json({ success: false, message: "Supplier not found" }, { status: 404 });
     }
 
     return NextResponse.json(supplier);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -33,15 +31,14 @@ export const PUT = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "update_suppliers");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "update_suppliers");
 
     const { id } = await params;
     const formData = await req.formData();
     const data = formData.get("data");
 
     if (!data) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const body = JSON.parse(data as string);
@@ -49,7 +46,7 @@ export const PUT = async (
 
     return NextResponse.json(supplier);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -58,15 +55,14 @@ export const DELETE = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "delete_suppliers");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "delete_suppliers");
 
     const { id } = await params;
     await deleteSupplier(id);
 
     return NextResponse.json({ message: "Supplier deleted" });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { createBrand, getBrands } from "@/services/BrandService";
-import { authorizeRequest } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export const GET = async (req: Request) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { searchParams } = new URL(req.url);
     const page = Number(searchParams.get("page") || 1);
@@ -17,21 +15,20 @@ export const GET = async (req: Request) => {
     const data = await getBrands({ page, size, search, status });
     return NextResponse.json(data);
   } catch (err) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const formData = await req.formData();
     const logo = formData.get("logo") as File | null;
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const brandData = JSON.parse(rawData);
@@ -39,6 +36,6 @@ export const POST = async (req: Request) => {
     const result = await createBrand(brandData, logo || undefined);
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 };

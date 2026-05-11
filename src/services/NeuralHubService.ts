@@ -1,6 +1,5 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { neuralRepository } from "@/repositories/NeuralRepository";
 
-const CACHE_COLLECTION = "neural_cache";
 const CACHE_KEY = "neural_core_feed";
 
 /**
@@ -9,12 +8,12 @@ const CACHE_KEY = "neural_core_feed";
 export const getNeuralFeed = async () => {
   try {
      console.log("[NeuralHubService] Reading feed from Cloud Neural Cache...");
-     const doc = await adminFirestore.collection(CACHE_COLLECTION).doc(CACHE_KEY).get();
+     const data = await neuralRepository.getFeedByKey(CACHE_KEY);
      
-     if (doc.exists) {
+     if (data) {
         return {
            success: true,
-           data: doc.data()?.data
+           data: data.data
         };
      }
 

@@ -1,122 +1,43 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
 import { PaymentMethod } from "@/model/PaymentMethod";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 
-const COLLECTION = "payment_methods";
-
 /**
- * Get all payment methods
+ * PaymentMethodService - Business logic for payment methods
+ * Delegates data access to paymentMethodRepository
  */
+
 export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
-  try {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as PaymentMethod[];
-  } catch (error) {
-    console.error("[PaymentMethodService] Error fetching methods:", error);
-    throw error;
-  }
+  return await paymentMethodRepository.findAllActive();
 };
 
-/**
- * Get payment method by ID
- */
-export const getPaymentMethodById = async (
-  id: string,
-): Promise<PaymentMethod> => {
-  try {
-    const doc = await adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .where("id", "==", id)
-      .limit(1)
-      .get();
-    if (!doc.docs.length) {
-      throw new AppError(`Payment Method with ID ${id} not found`, 404);
-    }
-    return { id: doc.docs[0].id, ...doc.docs[0].data() } as PaymentMethod;
-  } catch (error) {
-    console.error("[PaymentMethodService] Error fetching method:", error);
-    throw error;
+export const getPaymentMethodById = async (id: string): Promise<PaymentMethod> => {
+  const method = await paymentMethodRepository.findById(id);
+  if (!method || method.isDeleted) {
+    throw new AppError(`Payment Method with ID ${id} not found`, 404);
   }
+  return method;
 };
 
-/**
- * Create new payment method
- */
 export const createPaymentMethod = async (
   data: Omit<PaymentMethod, "id" | "createdAt" | "updatedAt" | "isDeleted">,
 ): Promise<PaymentMethod> => {
-  try {
-    const id = `pm-${nanoid(8)}`;
-    const newDocRef = adminFirestore.collection(COLLECTION).doc(id);
-    const newMethod: PaymentMethod = {
-      id,
-      ...data,
-      isDeleted: false,
-      createdAt: new Date() as any,
-      updatedAt: new Date() as any,
-    };
-
-    // Fix: Ensure we don't save 'id' field twice if not needed, but model implies it's part of object.
-    // Firestore set/create will save it as a field.
-    await newDocRef.set(newMethod);
-
-    return newMethod;
-  } catch (error) {
-    console.error("[PaymentMethodService] Error creating method:", error);
-    throw error;
-  }
+  const id = `pm-${nanoid(8)}`;
+  return await paymentMethodRepository.create(id, data);
 };
 
-/**
- * Update payment method
- */
 export const updatePaymentMethod = async (
   id: string,
   updates: Partial<PaymentMethod>,
 ): Promise<void> => {
-  try {
-    const docRef = adminFirestore.collection(COLLECTION).doc(id);
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) {
-      throw new AppError(`Payment Method with ID ${id} not found`, 404);
-    }
-
-    await docRef.update({
-      ...updates,
-      updatedAt: new Date() as any,
-    });
-  } catch (error) {
-    console.error("[PaymentMethodService] Error updating method:", error);
-    throw error;
-  }
+  const exists = await paymentMethodRepository.findById(id);
+  if (!exists) throw new AppError(`Payment Method with ID ${id} not found`, 404);
+  await paymentMethodRepository.update(id, updates);
 };
 
-/**
- * Delete payment method (Soft Delete)
- */
 export const deletePaymentMethod = async (id: string): Promise<void> => {
-  try {
-    // Check existence
-    const docRef = adminFirestore.collection(COLLECTION).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) {
-      throw new AppError(`Payment Method with ID ${id} not found`, 404);
-    }
-
-    await docRef.update({
-      isDeleted: true,
-      updatedAt: new Date() as any,
-    });
-  } catch (error) {
-    console.error("[PaymentMethodService] Error deleting method:", error);
-    throw error;
-  }
+  const exists = await paymentMethodRepository.findById(id);
+  if (!exists) throw new AppError(`Payment Method with ID ${id} not found`, 404);
+  await paymentMethodRepository.softDelete(id);
 };

@@ -1,111 +1,49 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { sizeRepository } from "@/repositories/SizeRepository";
 import { Size } from "@/model/Size";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 
-const COLLECTION = "sizes";
+/**
+ * SizeService - Business logic for product sizes
+ * Delegates data access to sizeRepository
+ */
 
-// 🔹 Get Sizes (pagination, optional search by name & status)
-export const getSizes = async ({
-  page = 1,
-  size = 10,
-  search = "",
-  status,
-}: {
+export const getSizes = async (options: {
   page?: number;
   size?: number;
   search?: string;
   status?: "active" | "inactive" | null;
 }) => {
-  try {
-    let query: FirebaseFirestore.Query = adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .orderBy("name");
-
-    if (status === "active") query = query.where("status", "==", "active");
-    if (status === "inactive") query = query.where("status", "==", "inactive");
-
-    if (search.trim()) {
-      const s = search.trim();
-      query = query.where("name", ">=", s).where("name", "<=", s + "\uf8ff");
-    }
-
-    const offset = (page - 1) * size;
-    const snapshot = await query.offset(offset).limit(size).get();
-
-    const dataList: Size[] = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Size),
-    }));
-
-    // Total count
-    const totalSnapshot = await query.get();
-
-    return { dataList, rowCount: totalSnapshot.size };
-  } catch (error) {
-    console.error("Get Sizes Error:", error);
-    throw error;
-  }
+  const { dataList, total } = await sizeRepository.findPaginated(options);
+  return { dataList, rowCount: total };
 };
 
-// 🔹 Create Size
 export const createSize = async (data: Size) => {
   const id = `sz-${nanoid(8)}`;
-  await adminFirestore
-    .collection(COLLECTION)
-    .doc(id)
-    .set({
-      ...data,
-      nameLower: data.name.toLowerCase(),
-      isDeleted: false,
-    });
-  return { id, ...data, nameLower: data.name.toLowerCase(), isDeleted: false };
+  return await sizeRepository.create(id, {
+    ...data,
+    nameLower: data.name.toLowerCase(),
+  });
 };
 
-// 🔹 Update Size
 export const updateSize = async (id: string, data: Partial<Size>) => {
-  const docRef = adminFirestore.collection(COLLECTION).doc(id);
-  const docSnap = await docRef.get();
-  if (!docSnap.exists) {
-    throw new AppError(`Size with ID ${id} not found`, 404);
-  }
+  const exists = await sizeRepository.findById(id);
+  if (!exists) throw new AppError(`Size with ID ${id} not found`, 404);
 
-  if (data.name) {
-    // Note: Assuming nameLower is needed but not strictly typed in Partial<Size>
-    (data as any).nameLower = data.name.toLowerCase();
-  }
-  await docRef.update(data);
-  const updatedDoc = await docRef.get();
-  return { id: updatedDoc.id, ...(updatedDoc.data() as Size) };
+  const updates = { ...data };
+  if (data.name) (updates as any).nameLower = data.name.toLowerCase();
+
+  await sizeRepository.update(id, updates);
+  return { id, ...exists, ...updates };
 };
 
-// 🔹 Delete Size (soft delete)
 export const deleteSize = async (id: string) => {
-  const docRef = adminFirestore.collection(COLLECTION).doc(id);
-  const docSnap = await docRef.get();
-  if (!docSnap.exists) {
-    throw new AppError(`Size with ID ${id} not found`, 404);
-  }
-
-  await docRef.update({ isDeleted: true });
+  const exists = await sizeRepository.findById(id);
+  if (!exists) throw new AppError(`Size with ID ${id} not found`, 404);
+  await sizeRepository.softDelete(id);
   return { id };
 };
 
 export const getSizeDropdown = async () => {
-  try {
-    const snapshot = await adminFirestore
-      .collection(COLLECTION)
-      .where("isDeleted", "==", false)
-      .where("status", "==", true)
-      .get();
-    const sizes = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      label: doc.data().name,
-    }));
-    return sizes;
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
+  return await sizeRepository.findForDropdown();
 };

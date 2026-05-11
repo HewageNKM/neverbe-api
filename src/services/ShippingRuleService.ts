@@ -1,79 +1,45 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { shippingRepository } from "@/repositories/SettingsRepositories";
 import { ShippingRule } from "@/model/ShippingRule";
-import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 
-const COLLECTION = "shipping_rules";
+/**
+ * ShippingRuleService - Business logic for shipping rules
+ * Delegates data access to shippingRepository
+ */
 
 export const getShippingRules = async () => {
-  try {
-    const snapshot = await adminFirestore.collection(COLLECTION).get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-      updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
-    }));
-  } catch (error) {
-    console.error("Error fetching shipping rules:", error);
-    throw error;
-  }
+  const rules = await shippingRepository.findAll();
+  return rules.map((r) => ({
+    ...r,
+    createdAt: (r.createdAt as any)?.toDate?.() || r.createdAt,
+    updatedAt: (r.updatedAt as any)?.toDate?.() || r.updatedAt,
+  }));
 };
 
 export const createShippingRule = async (data: Partial<ShippingRule>) => {
-  try {
-    const newRule = {
-      ...data,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    const id = `sr-${nanoid(8)}`;
-    await adminFirestore.collection(COLLECTION).doc(id).set(newRule);
-    return id;
-  } catch (error) {
-    console.error("Error creating shipping rule:", error);
-    throw error;
-  }
+  const id = `sr-${nanoid(8)}`;
+  await shippingRepository.create(id, data);
+  return id;
 };
 
 export const updateShippingRule = async (
   id: string,
   data: Partial<ShippingRule>,
 ) => {
-  try {
-    const docRef = adminFirestore.collection(COLLECTION).doc(id);
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) {
-      throw new AppError(`Shipping rule with ID ${id} not found`, 404);
-    }
+  const exists = await shippingRepository.findById(id);
+  if (!exists) throw new AppError(`Shipping rule with ID ${id} not found`, 404);
 
-    const updateData = {
-      ...data,
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    // Ensure ID is not in the data payload for update
-    delete (updateData as any).id;
+  const updateData = { ...data };
+  delete (updateData as any).id;
 
-    await docRef.update(updateData);
-    return id;
-  } catch (error) {
-    console.error("Error updating shipping rule:", error);
-    throw error;
-  }
+  await shippingRepository.update(id, updateData);
+  return id;
 };
 
 export const deleteShippingRule = async (id: string) => {
-  try {
-    const docRef = adminFirestore.collection(COLLECTION).doc(id);
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) {
-      throw new AppError(`Shipping rule with ID ${id} not found`, 404);
-    }
-    await docRef.delete();
-    return id;
-  } catch (error) {
-    console.error("Error deleting shipping rule:", error);
-    throw error;
-  }
+  const exists = await shippingRepository.findById(id);
+  if (!exists) throw new AppError(`Shipping rule with ID ${id} not found`, 404);
+  await shippingRepository.delete(id);
+  return id;
 };

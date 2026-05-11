@@ -1,13 +1,15 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { notificationRepository } from "@/repositories/NotificationRepository";
 import { AppError } from "@/utils/apiResponse";
 
-const SMS_TEMPLATES_COLLECTION = "sms_templates";
+/**
+ * TemplateService - Business logic for SMS templates
+ * Delegates data access to notificationRepository
+ */
 
 export const getSMSTemplates = async () => {
-  const snapshot = await adminFirestore.collection(SMS_TEMPLATES_COLLECTION).get();
+  const templates = await notificationRepository.findAllTemplates();
   
-  if (snapshot.empty) {
-    // Seed initial templates if collection is empty
+  if (templates.length === 0) {
     const defaults = [
       {
         id: "ORDER_CONFIRMED",
@@ -53,27 +55,16 @@ export const getSMSTemplates = async () => {
       }
     ];
 
-    for (const t of defaults) {
-      await adminFirestore.collection(SMS_TEMPLATES_COLLECTION).doc(t.id).set(t);
-    }
+    await notificationRepository.seedTemplates(defaults);
     return { data: defaults };
   }
 
-  return {
-    data: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  };
+  return { data: templates };
 };
 
 export const updateSMSTemplate = async (id: string, data: any) => {
-  const docRef = adminFirestore.collection(SMS_TEMPLATES_COLLECTION).doc(id);
-  const doc = await docRef.get();
-  
-  if (!doc.exists) throw new AppError("Template not found", 404);
-
-  await docRef.update({
-    ...data,
-    updatedAt: new Date()
-  });
-
+  const template = await notificationRepository.getSmsTemplate(id);
+  if (!template) throw new AppError("Template not found", 404);
+  await notificationRepository.updateTemplate(id, data);
   return { success: true };
 };

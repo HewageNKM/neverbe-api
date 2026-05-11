@@ -8,6 +8,7 @@ export interface Product {
   productId: string;
 
   name: string;
+  nameLower?: string;
   category: string;
   brand: string;
   description: string;
@@ -16,16 +17,16 @@ export interface Product {
   variants: ProductVariant[];
   weight: number;
 
-  buyingPrice: number;
+  buyingPrice?: number;
   sellingPrice: number;
   marketPrice: number;
   discount: number;
 
   listing: boolean;
   status: boolean;
+  isDeleted?: boolean;
 
   tags: string[];
-  gender?: string[]; // ["men", "women", "kids"] - can be multiple
   availableSizes?: string[]; // Denormalized from variants for search
 
   // --- NEW DENORMALIZED FIELDS ---

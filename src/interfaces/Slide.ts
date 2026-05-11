@@ -1,5 +1,1 @@
-export interface Slide {
-  fileName: string;
-  url: string;
-  id: string;
-}
+﻿export * from '../model/Slide';

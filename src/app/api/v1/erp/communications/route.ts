@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getAllNotificationLogs, sendManualNotification } from "@/services/NotificationService";
-import { errorResponse, apiResponse } from "@/utils/apiResponse";
+import { apiResponse } from "@/utils/apiResponse";
 
 /**
  * GET: Fetch all customer communication logs
  */
 export async function GET(req: Request) {
   try {
-    const isAuthorized = await authorizeRequest(req);
-    if (!isAuthorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_communications");
 
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
@@ -23,8 +22,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data: logs, total });
   } catch (error) {
-    console.error("[Communications API] GET Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }
 
@@ -33,14 +31,13 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const isAuthorized = await authorizeRequest(req, "update_settings");
-    if (!isAuthorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "send_custom_notifications");
 
     const body = await req.json();
     const { type, to, content, subject, orderId } = body;
 
     if (!type || !to || !content) {
-      return errorResponse("Missing required fields: type, to, content", 400);
+      return NextResponse.json({ success: false, message: "Missing required fields: type, to, content" }, { status: 400 });
     }
 
     const result = await sendManualNotification(orderId || null, type, content, subject, to);
@@ -48,11 +45,10 @@ export async function POST(req: Request) {
     if (result) {
       return apiResponse(null, "Notification sent successfully");
     } else {
-      return errorResponse("Failed to send notification. Check logs for details.", 500);
+      return NextResponse.json({ success: false, message: "Failed to send notification. Check logs for details." }, { status: 500 });
     }
   } catch (error: any) {
-    console.error("[Communications API] POST Error:", error.message);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 }
 

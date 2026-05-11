@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchLiveStock } from "@/services/ReportService";
-import { authorizeRequest } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export async function GET(req: NextRequest) {
   try {
-    const authorized = await authorizeRequest(req, "view_reports");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_reports");
 
     const url = new URL(req.url);
     const stockId = url.searchParams.get("stockId") || "";
@@ -14,6 +12,6 @@ export async function GET(req: NextRequest) {
     const data = await fetchLiveStock(stockId);
     return NextResponse.json(data);
   } catch (err: any) {
-    return errorResponse(err);
+    return handleAuthError(err);
   }
 }

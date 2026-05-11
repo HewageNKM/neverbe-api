@@ -1,47 +1,34 @@
 import { NextResponse } from 'next/server';
-import { adminFirestore } from '@/firebase/firebaseAdmin';
+import { requirePermission, handleAuthError } from '@/services/AuthService';
+import { settingsRepository } from '@/repositories/SettingsRepositories';
 
-const SETTINGS_COLLECTION = "app_settings";
-const DOC_ID = "neural_config";
-
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const doc = await adminFirestore.collection(SETTINGS_COLLECTION).doc(DOC_ID).get();
-    
-    // Default values if not set
-    const defaultConfig = {
-      historicalRunway: 120,
-      forecastWindow: 14,
-      weightingMode: 'BALANCED',
-      lastUpdated: new Date().toISOString()
-    };
-
-    if (!doc.exists) {
-      return NextResponse.json({ success: true, data: defaultConfig });
-    }
-
-    return NextResponse.json({ success: true, data: doc.data() });
+    await requirePermission(req, "view_settings");
+    const data = await settingsRepository.getNeuralConfig();
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
+    await requirePermission(req, "update_settings");
+    
+    const body = await req.json();
     const { historicalRunway, forecastWindow, weightingMode } = body;
 
     const newConfig = {
       historicalRunway: Number(historicalRunway) || 120,
       forecastWindow: Number(forecastWindow) || 14,
-      weightingMode: weightingMode || 'BALANCED',
-      updatedAt: new Date().toISOString()
+      weightingMode: weightingMode || 'BALANCED'
     };
 
-    await adminFirestore.collection(SETTINGS_COLLECTION).doc(DOC_ID).set(newConfig, { merge: true });
+    await settingsRepository.updateNeuralConfig(newConfig);
 
     return NextResponse.json({ success: true, message: "Neural Configuration Synchronized" });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }

@@ -1,36 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeRequest, loginUser } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
+import { requirePermission, loginUser, handleAuthError } from "@/services/AuthService";
 
 export const POST = async (req: NextRequest) => {
   try {
-    const isAuthorized = await authorizeRequest(req);
-    if (!isAuthorized) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req);
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const { uid } = JSON.parse(dataString);
 
     if (!uid) {
-      return errorResponse("Missing User ID", 400);
+      return NextResponse.json({ success: false, message: "Missing User ID" }, { status: 400 });
     }
 
     const user = await loginUser(uid);
 
     if (!user) {
-      return errorResponse("User not found", 404);
+      return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
     }
 
     return NextResponse.json(user, { status: 200 });
   } catch (error: any) {
-    console.error("Login Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

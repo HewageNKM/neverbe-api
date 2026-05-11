@@ -23,10 +23,11 @@ export class ProductFilterBuilder {
       this.options;
 
     // 1. Unified Search Tags (Case-Insensitive)
-    // Merge category and brand into tags for broader, case-insensitive discovery
+    // Merge category, brand and gender into tags for broader discovery
     const searchTags = [...tags];
     if (category) searchTags.push(category.toLowerCase());
     if (brand) searchTags.push(brand.toLowerCase());
+    if (gender) searchTags.push(gender.toLowerCase());
 
     // Firestore allows only ONE array-contains/any clause.
     if (searchTags.length > 0) {
@@ -37,10 +38,6 @@ export class ProductFilterBuilder {
         // Limit to 10 for Firestore constraints
         this.builder.where("tags", "array-contains-any", searchTags.slice(0, 10));
       }
-    }
-    // If no tags/category/brand, we can offload gender filtering to DB
-    else if (gender) {
-      this.builder.where("gender", "array-contains", gender);
     }
 
     // 2. Stock Logic
@@ -68,10 +65,11 @@ export class ProductFilterBuilder {
    * Check if post-fetching filtering is required for Gender
    */
   needsGenderPostFilter(): boolean {
-    const { tags, gender } = this.options;
-    // If we have both Tags AND Gender, we used the one DB slot for Tags.
-    // Thus, Gender must be checked in memory.
-    return !!(tags && tags.length > 0 && gender);
+    const { tags, gender, category, brand } = this.options;
+    // If we have gender AND any other tag-based filter, we need post-filtering
+    // because Firestore only allows one array-contains-any and we merged them (OR logic).
+    const hasOtherTags = (tags && tags.length > 0) || !!category || !!brand;
+    return !!(gender && hasOtherTags);
   }
 
   /**

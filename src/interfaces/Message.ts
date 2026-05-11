@@ -1,6 +1,1 @@
-export interface Message {
-  email: string;
-  subject: string;
-  name: string;
-  message: string;
-}
+﻿export * from '../model/Message';

@@ -95,3 +95,19 @@ export const apiResponse = (
   return successResponse(data, message, status);
 };
 
+/**
+ * Global Wrapper for API Handlers
+ * Automatically catches errors and returns standardized responses
+ */
+export const handleApiRoute = async (handler: () => Promise<any>) => {
+  try {
+    const result = await handler();
+    // If the handler already returns a NextResponse, return it directly
+    if (result instanceof NextResponse) return result;
+    return successResponse(result);
+  } catch (error: any) {
+    const status = error instanceof AppError ? error.statusCode : 500;
+    return errorResponse(error, status);
+  }
+};
+

@@ -162,6 +162,216 @@ export class OrderRepository extends BaseRepository<Order> {
 
     return itemCount;
   }
+
+  /**
+   * Find paid orders within a date range
+   */
+  async findPaidOrdersInDateRange(
+    start: Date,
+    end: Date
+  ): Promise<Order[]> {
+    const snapshot = await this.collection
+      .where("paymentStatus", "==", "Paid")
+      .where("createdAt", ">=", start)
+      .where("createdAt", "<=", end)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data() as Order);
+  }
+
+  /**
+   * Find orders within a date range by status
+   */
+  async findByStatusInDateRange(
+    start: Date,
+    end: Date,
+    statusList: string[] = ["Paid", "PAID"]
+  ): Promise<Order[]> {
+    const snapshot = await this.collection
+      .where("createdAt", ">=", start)
+      .where("createdAt", "<=", end)
+      .where("paymentStatus", "in", statusList)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data() as Order);
+  }
+
+  /**
+   * Get recent orders with limit
+   */
+  async findRecent(limit: number): Promise<Order[]> {
+    const snapshot = await this.collection
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+
+    return snapshot.docs.map(doc => doc.data() as Order);
+  }
+
+  /**
+   * Find orders for reporting purposes
+   */
+  async findForReport(options: {
+    start: Date;
+    end: Date;
+    paymentStatus?: string;
+    limit?: number;
+  }): Promise<Order[]> {
+    const { start, end, paymentStatus, limit } = options;
+    let query = this.collection
+      .where("createdAt", ">=", start)
+      .where("createdAt", "<=", end);
+
+    if (paymentStatus && paymentStatus !== "all") {
+      if (paymentStatus.toLowerCase() === "paid") {
+        query = query.where("paymentStatus", "in", ["Paid", "PAID"]);
+      } else {
+        query = query.where("paymentStatus", "==", paymentStatus);
+      }
+    }
+
+    query = query.orderBy("createdAt", "desc");
+    if (limit) query = query.limit(limit);
+
+    const snapshot = await query.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+  }
+
+  /**
+   * Count by payment status
+   */
+  async countByPaymentStatus(status: string): Promise<number> {
+    const snapshot = await this.collection
+      .where("paymentStatus", "==", status)
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
+
+  /**
+   * Count by order status and payment status
+   */
+  async countByStatusAndPayment(
+    paymentStatus: string,
+    orderStatuses: string[]
+  ): Promise<number> {
+    const snapshot = await this.collection
+      .where("paymentStatus", "==", paymentStatus)
+      .where("status", "in", orderStatuses)
+      .count()
+      .get();
+    return snapshot.data().count;
+  }
+
+  /**
+   * Save order with retry logic
+   */
+  async saveWithRetry(id: string, data: Order, maxAttempts: number = 3): Promise<void> {
+    const docRef = this.collection.doc(id);
+    const now = FieldValue.serverTimestamp();
+    const orderData = { ...data, createdAt: now, updatedAt: now };
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await docRef.set(orderData);
+        return;
+      } catch (err: any) {
+        if (attempt === maxAttempts) throw err;
+        await new Promise(r => setTimeout(r, attempt * 200));
+      }
+    }
+  }
+
+  /**
+   * Find paginated orders with filters
+   */
+  async findPaginated(options: {
+    page?: number;
+    size?: number;
+    startDate?: Date;
+    endDate?: Date;
+    status?: string;
+    paymentStatus?: string;
+    orderId?: string;
+    from?: string;
+    stockId?: string;
+    paymentMethod?: string;
+  }): Promise<{ dataList: Order[]; total: number }> {
+    const { 
+      page = 1, 
+      size = 20, 
+      startDate, 
+      endDate, 
+      status, 
+      paymentStatus, 
+      orderId, 
+      from, 
+      stockId, 
+      paymentMethod 
+    } = options;
+
+    let query: FirebaseFirestore.Query = this.collection;
+
+    if (startDate && endDate) {
+      query = query.where("createdAt", ">=", startDate).where("createdAt", "<=", endDate);
+    }
+    if (status) query = query.where("status", "==", status);
+    if (paymentStatus) query = query.where("paymentStatus", "==", paymentStatus);
+    if (from) query = query.where("from", "==", from);
+    if (stockId) query = query.where("stockId", "==", stockId);
+    if (paymentMethod) query = query.where("paymentMethod", "==", paymentMethod);
+    if (orderId) query = query.where("orderId", "==", orderId);
+
+    const total = (await query.count().get()).data().count;
+    
+    // Default sorting
+    query = query.orderBy("createdAt", "desc");
+
+    const snapshot = await query
+      .offset((page - 1) * size)
+      .limit(size)
+      .get();
+
+    return {
+      dataList: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order)),
+      total
+    };
+  }
+
+  /**
+   * Find Store (POS) order by orderId
+   */
+  async findStoreOrderByOrderId(orderId: string, stockId?: string): Promise<{ docId: string; data: Order } | null> {
+    let query = this.collection
+      .where("orderId", "==", orderId)
+      .where("from", "==", "Store");
+
+    if (stockId) {
+      query = query.where("stockId", "==", stockId);
+    }
+
+    const snapshot = await query.limit(1).get();
+
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return {
+      docId: doc.id,
+      data: doc.data() as Order,
+    };
+  }
+
+  /**
+   * Add exchange ID to order with transaction support
+   */
+  async arrayUnionExchangeId(
+    docId: string,
+    exchangeId: string,
+    tx?: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch
+  ): Promise<void> {
+    await this.update(docId, {
+      exchangeIds: FieldValue.arrayUnion(exchangeId),
+    } as any, tx);
+  }
 }
 
 // Singleton instance

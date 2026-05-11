@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getProducts, addProducts } from "@/services/ProductService";
-import { errorResponse } from "@/utils/apiResponse";
 
 /**
  * GET: Fetch a paginated list of products
  */
 export const GET = async (req: NextRequest) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
@@ -36,7 +34,7 @@ export const GET = async (req: NextRequest) => {
 
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -45,27 +43,26 @@ export const GET = async (req: NextRequest) => {
  */
 export const POST = async (req: NextRequest) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const formData = await req.formData();
     const file = formData.get("thumbnail") as File | null;
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const productData = JSON.parse(rawData);
 
     if (!file) {
-      return errorResponse("Thumbnail file is required", 400);
+      return NextResponse.json({ success: false, message: "Thumbnail file is required" }, { status: 400 });
     }
 
     const result = await addProducts(productData, file);
 
     return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

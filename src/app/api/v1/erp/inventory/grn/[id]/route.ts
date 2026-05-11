@@ -1,24 +1,24 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getGRNById, updateGRNStatus } from "@/services/GRNService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "view_grn");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_grn");
 
     const { id } = await params;
     const grn = await getGRNById(id);
 
-    if (!grn) return errorResponse("GRN not found", 404);
+    if (!grn) {
+      return NextResponse.json({ success: false, message: "GRN not found" }, { status: 404 });
+    }
 
     return NextResponse.json(grn);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -31,16 +31,15 @@ export const PATCH = async (
     const body = await req.json();
 
     if (body.status) {
-      const response = await authorizeRequest(req, "approve_grn");
-      if (!response) return errorResponse("Unauthorized", 401);
+      await requirePermission(req, "approve_grn");
 
       const grn = await updateGRNStatus(id, body.status);
       return NextResponse.json(grn);
     }
 
-    return errorResponse("Invalid update", 400);
+    return NextResponse.json({ success: false, message: "Invalid update" }, { status: 400 });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getExpenseSummary } from "@/services/DashboardService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_dashboard");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_dashboard");
 
     const data = await getExpenseSummary();
     return NextResponse.json(data);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

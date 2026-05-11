@@ -1,7 +1,6 @@
-import { authorizeRequest } from "@/services/AuthService";
-import { updateInventoryQuantity } from "@/services/InventoryService"; // Use specific update function
+import { requirePermission, handleAuthError } from "@/services/AuthService";
+import { updateInventoryQuantity } from "@/services/InventoryService";
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 // PUT Handler: Update quantity for a specific inventory item
 export const PUT = async (
@@ -10,20 +9,17 @@ export const PUT = async (
 ) => {
   try {
     const { inventoryId } = await params;
-    const user = await authorizeRequest(req, "view_inventory");
-    if (!user) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "update_inventory");
 
     if (!inventoryId) {
-      return errorResponse("Inventory ID is required", 400);
+      return NextResponse.json({ success: false, message: "Inventory ID is required" }, { status: 400 });
     }
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const data = JSON.parse(dataString);
@@ -35,10 +31,10 @@ export const PUT = async (
       data.quantity < 0 ||
       !Number.isInteger(data.quantity)
     ) {
-      return errorResponse(
-        "Quantity is required and must be a non-negative integer",
-        400
-      );
+      return NextResponse.json({ 
+        success: false, 
+        message: "Quantity is required and must be a non-negative integer" 
+      }, { status: 400 });
     }
 
     const updatedItem = await updateInventoryQuantity(
@@ -46,10 +42,10 @@ export const PUT = async (
       data.quantity
     );
 
-    return NextResponse.json(updatedItem, { status: 200 }); // Return updated item
+    return NextResponse.json(updatedItem, { status: 200 });
   } catch (error: any) {
     console.error(`PUT /api/v2/inventory Error:`, error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

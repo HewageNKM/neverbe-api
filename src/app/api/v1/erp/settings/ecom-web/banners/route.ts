@@ -1,41 +1,33 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { addABanner, getAllBanners } from "@/services/WebsiteService";
-import { uploadCompressedImage, uploadFile } from "@/services/StorageService";
-import { errorResponse } from "@/utils/apiResponse";
+import { uploadCompressedImage } from "@/services/StorageService";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "view_website");
     const banners = await getAllBanners();
     return NextResponse.json(banners);
   } catch (error: any) {
-    console.error("[Banners API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_website");
-    if (!response) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "update_website");
     const formData = await req.formData();
     const rawData = formData.get("data") as string;
 
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const { path } = JSON.parse(rawData);
     const bannerFile = formData.get("banner") as File;
 
     if (!bannerFile) {
-      return errorResponse("Banner image is required", 400);
+      return NextResponse.json({ success: false, message: "Banner image is required" }, { status: 400 });
     }
 
     // Generate unique WebP filename
@@ -50,8 +42,7 @@ export const POST = async (req: Request) => {
     });
     return NextResponse.json(writeResult);
   } catch (error: any) {
-    console.error("[Banners API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

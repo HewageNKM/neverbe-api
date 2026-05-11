@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeAndGetUser } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { updateAdjustmentStatus } from "@/services/InventoryAdjustmentService";
-import { errorResponse } from "@/utils/apiResponse";
 import { AdjustmentStatus } from "@/model/InventoryAdjustment";
 
 export const PUT = async (
@@ -9,24 +8,21 @@ export const PUT = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const user = await authorizeAndGetUser(req);
-    if (!user) {
-      return errorResponse("Unauthorized", 401);
-    }
+    const user = await requirePermission(req, "approve_adjustments");
 
     const { id } = await params;
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
     const { status } = body;
 
     if (!status) {
-      return errorResponse("Status is required", 400);
+      return NextResponse.json({ success: false, message: "Status is required" }, { status: 400 });
     }
 
     // Validate status
@@ -38,14 +34,13 @@ export const PUT = async (
       "COMPLETED",
     ];
     if (!validStatuses.includes(status)) {
-      return errorResponse("Invalid status", 400);
+      return NextResponse.json({ success: false, message: "Invalid status" }, { status: 400 });
     }
 
-    await updateAdjustmentStatus(id, status as AdjustmentStatus, user.userId);
+    await updateAdjustmentStatus(id, status as AdjustmentStatus, user.uid);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("[Adjustment Status API] Error:", error);
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

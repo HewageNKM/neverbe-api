@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDomexTracking } from "@/services/TrackingService";
 import { getOrder } from "@/services/OrderService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export const GET = async (
   req: NextRequest,
   context: { params: Promise<{ orderId: string }> },
 ) => {
   try {
+    await requirePermission(req, "view_orders");
+
     const orderId = (await context.params).orderId;
     if (!orderId) {
-      return NextResponse.json({ message: "Order ID is required" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Order ID is required" }, { status: 400 });
     }
 
     // 1. Fetch order to get tracking number
@@ -34,13 +37,6 @@ export const GET = async (
     }, { status: 200 });
 
   } catch (error: any) {
-    console.error("[Tracking API] Error:", error.message);
-    return NextResponse.json({ 
-      data: {
-        trackingNumber: null, 
-        history: [],
-        error: "Live tracking fetch failed"
-      }
-    }, { status: 200 });
+    return handleAuthError(error);
   }
 };

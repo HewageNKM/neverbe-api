@@ -5,7 +5,6 @@ import {
   getRecentExchanges,
 } from "@/services/ExchangeService";
 import { verifyPosAuth, handleAuthError } from "@/services/AuthService";
-import { errorResponse, successResponse } from "@/utils/apiResponse";
 
 /**
  * GET - Check order eligibility for exchange or list recent exchanges
@@ -16,7 +15,7 @@ import { errorResponse, successResponse } from "@/utils/apiResponse";
  */
 export async function GET(request: NextRequest) {
   try {
-    const decodedToken = await verifyPosAuth("process_pos_exchange");
+    await verifyPosAuth("process_pos_exchange");
 
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get("orderId");
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     // Check order eligibility
     if (!orderId) {
-      return errorResponse("orderId is required", 400);
+      return NextResponse.json({ success: false, message: "orderId is required" }, { status: 400 });
     }
 
     const result = await getOrderForExchange(orderId, stockId || undefined);
@@ -54,31 +53,31 @@ export async function POST(request: NextRequest) {
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("No data provided", 400);
+      return NextResponse.json({ success: false, message: "No data provided" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
 
     // Validate required fields
     if (!body.originalOrderId) {
-      return errorResponse("originalOrderId is required", 400);
+      return NextResponse.json({ success: false, message: "originalOrderId is required" }, { status: 400 });
     }
     if (!body.stockId) {
-      return errorResponse("stockId is required", 400);
+      return NextResponse.json({ success: false, message: "stockId is required" }, { status: 400 });
     }
     if (
       !body.returnedItems ||
       !Array.isArray(body.returnedItems) ||
       body.returnedItems.length === 0
     ) {
-      return errorResponse("At least one returned item is required", 400);
+      return NextResponse.json({ success: false, message: "At least one returned item is required" }, { status: 400 });
     }
     if (
       !body.replacementItems ||
       !Array.isArray(body.replacementItems) ||
       body.replacementItems.length === 0
     ) {
-      return errorResponse("At least one replacement item is required", 400);
+      return NextResponse.json({ success: false, message: "At least one replacement item is required" }, { status: 400 });
     }
 
     const exchange = await processExchange(

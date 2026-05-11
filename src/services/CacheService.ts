@@ -1,15 +1,15 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { cacheRepository } from "@/repositories/CacheRepository";
 import { Timestamp } from "firebase-admin/firestore";
 
-const COLLECTION_NAME = "dashboard_cache";
-
 /**
- * In-memory cache for ultra-fast session retrieval
+ * CacheService - Business logic for dashboard and session caching
+ * Delegates persistence to cacheRepository
  */
+
 const inMemoryCache = new Map<string, { data: any; expiry: number }>();
 
 /**
- * Get data from cache (In-memory first, then Firestore)
+ * Get data from cache (In-memory first, then repository)
  */
 export const getCache = async (key: string): Promise<any | null> => {
   const now = Date.now();
@@ -21,19 +21,19 @@ export const getCache = async (key: string): Promise<any | null> => {
     return mem.data;
   }
 
-  // 2. Check Firestore
+  // 2. Check Repository
   try {
-    const doc = await adminFirestore.collection(COLLECTION_NAME).doc(key).get();
-    if (doc.exists) {
-      const { data, expiry } = doc.data() as { data: any; expiry: Timestamp };
+    const cached = await cacheRepository.findByKey(key);
+    if (cached) {
+      const { data, expiry } = cached as { data: any; expiry: Timestamp };
       if (expiry.toMillis() > now) {
-        console.log(`[CacheService] Firestore Hit: ${key}`);
+        console.log(`[CacheService] Repository Hit: ${key}`);
         // Backfill memory
         inMemoryCache.set(key, { data, expiry: expiry.toMillis() });
         return data;
       } else {
-        console.log(`[CacheService] Firestore Expired: ${key}`);
-        await doc.ref.delete(); // Cleanup
+        console.log(`[CacheService] Repository Expired: ${key}`);
+        await cacheRepository.deleteByKey(key);
       }
     }
   } catch (error) {
@@ -44,7 +44,7 @@ export const getCache = async (key: string): Promise<any | null> => {
 };
 
 /**
- * Set data to cache (Firestore + In-memory)
+ * Set data to cache (Repository + In-memory)
  */
 export const setCache = async (
   key: string,
@@ -56,14 +56,7 @@ export const setCache = async (
   const expiryTimestamp = Timestamp.fromDate(expiryDate);
 
   try {
-    // 1. Write to Firestore
-    await adminFirestore.collection(COLLECTION_NAME).doc(key).set({
-      data,
-      expiry: expiryTimestamp,
-      updatedAt: Timestamp.now(),
-    });
-
-    // 2. Update In-Memory
+    await cacheRepository.setWithExpiry(key, data, expiryTimestamp);
     inMemoryCache.set(key, { data, expiry: expiryDate.getTime() });
     console.log(`[CacheService] Cached: ${key} (TTL: ${ttlHours}h)`);
   } catch (error) {
@@ -77,7 +70,7 @@ export const setCache = async (
 export const clearCache = async (key: string): Promise<void> => {
   inMemoryCache.delete(key);
   try {
-    await adminFirestore.collection(COLLECTION_NAME).doc(key).delete();
+    await cacheRepository.deleteByKey(key);
     console.log(`[CacheService] Cleared: ${key}`);
   } catch (error) {
     console.error(`[CacheService] Clear Error for ${key}:`, error);

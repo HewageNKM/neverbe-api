@@ -4,7 +4,6 @@ import {
   getProductInventoryByStock,
 } from "@/services/POSService";
 import { verifyPosAuth, handleAuthError } from "@/services/AuthService";
-import { errorResponse } from "@/utils/apiResponse";
 
 // GET - Fetch inventory for specific product/variant/size or all inventory for product
 export async function GET(request: NextRequest) {
@@ -18,7 +17,7 @@ export async function GET(request: NextRequest) {
     const size = searchParams.get("size");
 
     if (!stockId || !productId) {
-      return errorResponse("stockId and productId are required", 400);
+      return NextResponse.json({ success: false, message: "stockId and productId are required" }, { status: 400 });
     }
 
     // If variantId and size provided, get specific inventory item

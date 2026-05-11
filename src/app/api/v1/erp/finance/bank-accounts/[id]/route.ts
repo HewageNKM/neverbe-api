@@ -1,29 +1,29 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getBankAccountById,
   updateBankAccount,
   deleteBankAccount,
   updateBankAccountBalance,
 } from "@/services/BankAccountService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "view_bank_accounts");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_bank_accounts");
 
     const { id } = await params;
     const account = await getBankAccountById(id);
 
-    if (!account) return errorResponse("Account not found", 404);
+    if (!account) {
+      return NextResponse.json({ success: false, message: "Account not found" }, { status: 404 });
+    }
 
     return NextResponse.json(account);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -32,15 +32,14 @@ export const PUT = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "view_bank_accounts");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_bank_accounts");
 
     const { id } = await params;
     const formData = await req.formData();
     const data = formData.get("data");
 
     if (!data) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const body = JSON.parse(data as string);
@@ -58,7 +57,7 @@ export const PUT = async (
     const account = await updateBankAccount(id, body);
     return NextResponse.json(account);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -67,14 +66,13 @@ export const DELETE = async (
   { params }: { params: Promise<{ id: string }> }
 ) => {
   try {
-    const response = await authorizeRequest(req, "view_bank_accounts");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_bank_accounts");
 
     const { id } = await params;
     await deleteBankAccount(id);
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

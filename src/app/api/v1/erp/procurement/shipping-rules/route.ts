@@ -1,33 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getShippingRules,
   createShippingRule,
 } from "@/services/ShippingRuleService";
 import { ShippingRule } from "@/model/ShippingRule";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: NextRequest) => {
   try {
-    const authorized = await authorizeRequest(req, "view_shipping");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_shipping");
 
     const rules = await getShippingRules();
     return NextResponse.json(rules);
   } catch (error) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: NextRequest) => {
   try {
-    const authorized = await authorizeRequest(req, "update_shipping");
-    if (!authorized) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "update_shipping");
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
@@ -39,7 +36,7 @@ export const POST = async (req: NextRequest) => {
       maxWeight === undefined ||
       rate === undefined
     ) {
-      return errorResponse("Missing required fields", 400);
+      return NextResponse.json({ success: false, message: "Missing required fields" }, { status: 400 });
     }
 
     const newRule: Partial<ShippingRule> = {
@@ -57,6 +54,6 @@ export const POST = async (req: NextRequest) => {
       { status: 201 }
     );
   } catch (error) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getBankAccounts,
   createBankAccount,
   getBankAccountsDropdown,
   getTotalBalance,
 } from "@/services/BankAccountService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const GET = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "view_bank_accounts");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_bank_accounts");
 
     const url = new URL(req.url);
     const dropdown = url.searchParams.get("dropdown") === "true";
@@ -30,27 +28,26 @@ export const GET = async (req: Request) => {
     const data = await getBankAccounts();
     return NextResponse.json(data);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 export const POST = async (req: Request) => {
   try {
-    const response = await authorizeRequest(req, "manage_bank_accounts");
-    if (!response) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "manage_bank_accounts");
 
     const formData = await req.formData();
     const data = formData.get("data");
 
     if (!data) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
 
     const body = JSON.parse(data as string);
     const account = await createBankAccount(body);
     return NextResponse.json(account, { status: 201 });
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 

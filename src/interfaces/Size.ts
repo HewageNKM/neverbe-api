@@ -1,4 +1,1 @@
-export interface Size {
-  size: string;
-  stock: number;
-}
+﻿export * from '../model/Size';

@@ -1,13 +1,11 @@
-import { authorizeRequest } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getStocks, addStock } from "@/services/StockService"; // Use StockService
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/utils/apiResponse";
 
 // GET Handler: Fetch list of stock locations
 export const GET = async (req: NextRequest) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
@@ -28,21 +26,20 @@ export const GET = async (req: NextRequest) => {
 
     return NextResponse.json(result);
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
 // POST Handler: Create a new stock location
 export const POST = async (req: NextRequest) => {
   try {
-    const user = await authorizeRequest(req, "view_master_data");
-    if (!user) return errorResponse("Unauthorized", 401);
+    await requirePermission(req, "view_master_data");
 
     const formData = await req.formData();
     const rawData = formData.get("data") as string;
     
     if (!rawData) {
-      return errorResponse("Data is required", 400);
+      return NextResponse.json({ success: false, message: "Data is required" }, { status: 400 });
     }
     
     const data = JSON.parse(rawData);
@@ -53,10 +50,10 @@ export const POST = async (req: NextRequest) => {
       typeof data.name !== "string" ||
       data.name.trim() === ""
     ) {
-      return errorResponse("Stock location name is required", 400);
+      return NextResponse.json({ success: false, message: "Stock location name is required" }, { status: 400 });
     }
     if (typeof data.status !== "boolean") {
-      return errorResponse("Status (true/false) is required", 400);
+      return NextResponse.json({ success: false, message: "Status (true/false) is required" }, { status: 400 });
     }
 
     // Ensure only expected fields are passed
@@ -69,6 +66,6 @@ export const POST = async (req: NextRequest) => {
     const newStock = await addStock(stockData);
     return NextResponse.json(newStock, { status: 201 }); // Return the created object
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

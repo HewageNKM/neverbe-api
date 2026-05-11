@@ -1,7 +1,12 @@
-import { adminFirestore } from "@/firebase/firebaseAdmin";
+import { orderRepository } from "@/repositories/OrderRepository";
+import { pettyCashRepository, paymentRecordRepository } from "@/repositories/FinanceRepositories";
 import { getBankAccounts } from "./BankAccountService";
 import { getInvoiceAgingSummary } from "./SupplierInvoiceService";
-import { getExpenseCategories } from "./ExpenseCategoryService";
+
+/**
+ * FinanceDashboardService - Business logic for financial analytics
+ * Delegates data access to repositories
+ */
 
 export interface FinanceDashboardData {
   cards: {
@@ -15,166 +20,112 @@ export interface FinanceDashboardData {
   cashFlow: { date: string; income: number; expense: number }[];
 }
 
-export const getFinanceDashboardData =
-  async (): Promise<FinanceDashboardData> => {
-    try {
-      const banks = await getBankAccounts();
-      const totalBankBalance = banks.reduce((acc, b) => acc + b.currentBalance, 0);
+export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> => {
+  const banks = await getBankAccounts();
+  const totalBankBalance = banks.reduce((acc, b) => acc + b.currentBalance, 0);
 
-      const invoiceSummary = await getInvoiceAgingSummary();
+  const invoiceSummary = await getInvoiceAgingSummary();
 
-      // Calculate Monthly Expenses/Income from PettyCash (and payments)
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
 
-      const pettyCashSnapshot = await adminFirestore
-        .collection("expenses")
-        .where("status", "==", "APPROVED")
-        .where("date", ">=", startOfMonth)
-        .get();
+  // Use repositories instead of adminFirestore
+  const pettyCashData = await pettyCashRepository.findForDashboard(startOfMonth);
+  const paymentRecordsData = await paymentRecordRepository.findForDashboard(startOfMonth);
+  const ordersData = await orderRepository.findForReport(startOfMonth, new Date());
 
-      const paymentRecordsSnapshot = await adminFirestore
-        .collection("payment_records")
-        .where("date", ">=", startOfMonth)
-        .get();
+  let monthlyExpenses = 0;
+  let monthlyIncome = 0;
+  const categoryMap: Record<string, number> = {};
+  const cashFlowMap: Record<string, { income: number; expense: number }> = {};
 
-      const ordersSnapshot = await adminFirestore
-        .collection("orders")
-        .where("createdAt", ">=", startOfMonth)
-        .where("paymentStatus", "in", ["Paid", "PAID"])
-        .get();
-
-      let monthlyExpenses = 0;
-      let monthlyIncome = 0;
-      const categoryMap: Record<string, number> = {};
-      const cashFlowMap: Record<string, { income: number; expense: number }> =
-        {};
-
-      // Process Orders (Income)
-      ordersSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const amount = Number(data.total) || 0;
-        const date = new Date(
-          (data.createdAt as any).toDate()
-        ).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-        if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
-        monthlyIncome += amount;
-        cashFlowMap[date].income += amount;
-      });
-
-      // Process Petty Cash / Expenses
-      pettyCashSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const amount = Number(data.amount) || 0;
-        const date = new Date(
-          (data.date as any).toDate()
-        ).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-        if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
-
-        if (data.type === "expense") {
-          monthlyExpenses += amount;
-          const cat = data.category || "Uncategorized";
-          categoryMap[cat] = (categoryMap[cat] || 0) + amount;
-          cashFlowMap[date].expense += amount;
-        } else {
-          monthlyIncome += amount;
-          cashFlowMap[date].income += amount;
-        }
-      });
-
-      // Process Payment Records (Supplier Payments)
-      paymentRecordsSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const amount = Number(data.amount) || 0;
-        const date = new Date((data.date as any).toDate()).toLocaleDateString(
-          "en-US",
-          { month: "short", day: "numeric" }
-        );
-
-        if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
-
-        // Payments are typically expenses
-        monthlyExpenses += amount;
-        const cat = data.category || "Supplier Payment";
-        categoryMap[cat] = (categoryMap[cat] || 0) + amount;
-        cashFlowMap[date].expense += amount;
-      });
-
-      // Expense Breakdown
-      // Assign colors dynamically or fixed
-      const colors = ["#16a34a", "#10b981", "#34d399", "#059669", "#047857"];
-      const expenseBreakdown = Object.entries(categoryMap)
-        .map(([category, amount], index) => ({
-          category,
-          amount,
-          color: colors[index % colors.length],
-        }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5); // Top 5
-
-      const cashFlow = Object.entries(cashFlowMap)
-        .map(([date, vals]) => ({
-          date,
-          ...vals,
-        }))
-        .sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-
-      // Recent Transactions (Mix of Petty Cash and Invoice Payments?)
-      // Fetch separate recent queries
-      const recentPetty = await adminFirestore
-        .collection("expenses")
-        .orderBy("date", "desc")
-        .limit(5)
-        .get();
-
-      const recentPayments = await adminFirestore
-        .collection("payment_records")
-        .limit(5)
-        .get();
-
-      const transactions = [
-        ...recentPetty.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          dateObj: (doc.data().date as any).toDate(),
-          date: (doc.data().date as any).toDate().toLocaleDateString(),
-          category: doc.data().category,
-          amount: Number(doc.data().amount),
-          type: doc.data().type,
-          note: doc.data().note || doc.data().description,
-        })),
-        ...recentPayments.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          dateObj: (doc.data().date as any).toDate(),
-          date: (doc.data().date as any).toDate().toLocaleDateString(),
-          category: doc.data().category,
-          amount: Number(doc.data().amount),
-          type: "expense", // Payment records are expenses
-          note: doc.data().description,
-        })),
-      ]
-        .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
-        .slice(0, 5);
-
-      return {
-        cards: {
-          totalBankBalance,
-          totalPayable: invoiceSummary.totalPayable || 0,
-          monthlyExpenses,
-          monthlyIncome,
-        },
-        expenseBreakdown,
-        recentTransactions: transactions,
-        cashFlow,
-      };
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-      throw error;
+  // Process Orders (Income)
+  ordersData.forEach((data: any) => {
+    if (data.paymentStatus?.toUpperCase() === "PAID") {
+      const amount = Number(data.total) || 0;
+      const date = new Date((data.createdAt as any).toDate?.() || data.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
+      monthlyIncome += amount;
+      cashFlowMap[date].income += amount;
     }
+  });
+
+  // Process Petty Cash / Expenses
+  pettyCashData.forEach((data) => {
+    const amount = Number(data.amount) || 0;
+    const date = new Date((data.date as any).toDate?.() || data.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
+
+    if (data.type === "expense") {
+      monthlyExpenses += amount;
+      const cat = data.category || "Uncategorized";
+      categoryMap[cat] = (categoryMap[cat] || 0) + amount;
+      cashFlowMap[date].expense += amount;
+    } else {
+      monthlyIncome += amount;
+      cashFlowMap[date].income += amount;
+    }
+  });
+
+  // Process Payment Records (Supplier Payments)
+  paymentRecordsData.forEach((data) => {
+    const amount = Number(data.amount) || 0;
+    const date = new Date((data.date as any).toDate?.() || data.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
+    monthlyExpenses += amount;
+    const cat = data.category || "Supplier Payment";
+    categoryMap[cat] = (categoryMap[cat] || 0) + amount;
+    cashFlowMap[date].expense += amount;
+  });
+
+  const colors = ["#16a34a", "#10b981", "#34d399", "#059669", "#047857"];
+  const expenseBreakdown = Object.entries(categoryMap)
+    .map(([category, amount], index) => ({ category, amount, color: colors[index % colors.length] }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
+
+  const cashFlow = Object.entries(cashFlowMap)
+    .map(([date, vals]) => ({ date, ...vals }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const recentPetty = await pettyCashRepository.findRecent(5);
+  const recentPayments = await paymentRecordRepository.findRecent(5);
+
+  const transactions = [
+    ...recentPetty.map((data) => ({
+      id: data.id,
+      ...data,
+      dateObj: (data.date as any).toDate?.() || new Date(data.date),
+      date: new Date((data.date as any).toDate?.() || data.date).toLocaleDateString(),
+      category: data.category,
+      amount: Number(data.amount),
+      type: data.type,
+      note: data.note || data.description,
+    })),
+    ...recentPayments.map((data) => ({
+      id: data.id,
+      ...data,
+      dateObj: (data.date as any).toDate?.() || new Date(data.date),
+      date: new Date((data.date as any).toDate?.() || data.date).toLocaleDateString(),
+      category: data.category,
+      amount: Number(data.amount),
+      type: "expense",
+      note: data.description,
+    })),
+  ]
+    .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
+    .slice(0, 5);
+
+  return {
+    cards: {
+      totalBankBalance,
+      totalPayable: invoiceSummary.totalPayable || 0,
+      monthlyExpenses,
+      monthlyIncome,
+    },
+    expenseBreakdown,
+    recentTransactions: transactions,
+    cashFlow,
   };
+};

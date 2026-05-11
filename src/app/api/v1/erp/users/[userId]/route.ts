@@ -1,31 +1,27 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest, updateUser } from "@/services/AuthService";
+import { requirePermission, handleAuthError, updateUser } from "@/services/AuthService";
+import { deleteUser } from "@/services/UserService";
 import { User } from "@/model/User";
-import { adminAuth, adminFirestore } from "@/firebase/firebaseAdmin";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const PUT = async (
   req: Request,
   { params }: { params: Promise<{ userId: string }> }
 ) => {
   try {
-    const isAuthorized = await authorizeRequest(req, "manage_users");
-    if (!isAuthorized) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "manage_users");
 
     const { userId } = await params;
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body: Partial<User> = JSON.parse(dataString);
 
     if (!userId) {
-      return errorResponse("User ID is required", 400);
+      return NextResponse.json({ success: false, message: "User ID is required" }, { status: 400 });
     }
 
     await updateUser(userId, body);
@@ -35,7 +31,7 @@ export const PUT = async (
       { status: 200 }
     );
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };
 
@@ -44,35 +40,21 @@ export const DELETE = async (
   { params }: { params: Promise<{ userId: string }> }
 ) => {
   try {
-    const isAuthorized = await authorizeRequest(req, "manage_users");
-    if (!isAuthorized) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "manage_users");
 
     const { userId } = await params;
 
     if (!userId) {
-      return errorResponse("User ID is required", 400);
+      return NextResponse.json({ success: false, message: "User ID is required" }, { status: 400 });
     }
 
-    // Delete from Auth
-    try {
-      await adminAuth.deleteUser(userId);
-    } catch (e: any) {
-      if (e.code !== "auth/user-not-found") {
-        // If user not found in auth, we proceed to delete from firestore
-        throw e;
-      }
-    }
-
-    // Delete from Firestore
-    await adminFirestore.collection("users").doc(userId).delete();
+    await deleteUser(userId);
 
     return NextResponse.json(
       { message: "User deleted successfully" },
       { status: 200 }
     );
   } catch (error: any) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

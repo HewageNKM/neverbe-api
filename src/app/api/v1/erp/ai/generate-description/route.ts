@@ -1,27 +1,23 @@
 import { NextResponse } from "next/server";
-import { authorizeAndGetUser } from "@/services/AuthService";
+import { requirePermission, handleAuthError } from "@/services/AuthService";
 import { getGenAI } from "@/services/AIService";
-import { errorResponse } from "@/utils/apiResponse";
 
 export const POST = async (req: Request) => {
   try {
-    const user = await authorizeAndGetUser(req);
-    if (!user) {
-      return errorResponse("Unauthorized", 401);
-    }
+    await requirePermission(req, "view_dashboard");
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
 
     if (!dataString) {
-      return errorResponse("Missing data field", 400);
+      return NextResponse.json({ success: false, message: "Missing data field" }, { status: 400 });
     }
 
     const body = JSON.parse(dataString);
     const { name, category, brand, gender, tags } = body;
 
     if (!name) {
-      return errorResponse("Product name is required", 400);
+      return NextResponse.json({ success: false, message: "Product name is required" }, { status: 400 });
     }
 
     const genAI = getGenAI();
@@ -59,6 +55,6 @@ Requirements:
       data: { description },
     });
   } catch (error: unknown) {
-    return errorResponse(error);
+    return handleAuthError(error);
   }
 };

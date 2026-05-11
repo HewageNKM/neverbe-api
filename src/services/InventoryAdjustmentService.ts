@@ -1,46 +1,35 @@
-import { adminFirestore, adminAuth } from "@/firebase/firebaseAdmin";
+import { adminAuth } from "@/firebase/firebaseAdmin";
+import { inventoryAdjustmentRepository } from "@/repositories/InventoryAdjustmentRepository";
+import { inventoryRepository } from "@/repositories/InventoryRepository";
 import {
   InventoryAdjustment,
   AdjustmentItem,
   AdjustmentType,
   AdjustmentStatus,
 } from "@/model/InventoryAdjustment";
-import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 
-const COLLECTION = "inventory_adjustments";
-const INVENTORY_COLLECTION = "stock_inventory";
-
 /**
- * Generate adjustment number
+ * InventoryAdjustmentService - Business logic for stock adjustments
+ * Delegates data access to repositories
  */
+
 const generateAdjustmentNumber = async (): Promise<string> => {
   const today = new Date();
-  const prefix = `ADJ-${today.getFullYear()}${String(
-    today.getMonth() + 1,
-  ).padStart(2, "0")}`;
+  const prefix = `ADJ-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  const snapshot = await adminFirestore
-    .collection(COLLECTION)
-    .where("adjustmentNumber", ">=", prefix)
-    .where("adjustmentNumber", "<", prefix + "\uf8ff")
-    .limit(1)
-    .get();
+  const lastNumber = await inventoryAdjustmentRepository.findLastAdjustmentNumber(prefix);
 
   let sequence = 1;
-  if (!snapshot.empty) {
-    const last = snapshot.docs[0].data().adjustmentNumber;
-    const lastSeq = parseInt(last.split("-").pop() || "0", 10);
+  if (lastNumber) {
+    const lastSeq = parseInt(lastNumber.split("-").pop() || "0", 10);
     sequence = lastSeq + 1;
   }
 
   return `${prefix}-${String(sequence).padStart(4, "0")}`;
 };
 
-/**
- * Get all adjustments with native Firestore search
- */
 export const getAdjustments = async (
   pageNumber = 1,
   size = 20,
@@ -48,303 +37,109 @@ export const getAdjustments = async (
   type?: AdjustmentType,
   status?: AdjustmentStatus,
 ): Promise<{ dataList: InventoryAdjustment[]; rowCount: number }> => {
-  try {
-    let query: any = adminFirestore.collection(COLLECTION);
+  const { dataList, total } = await inventoryAdjustmentRepository.findPaginated({
+    page: pageNumber,
+    size,
+    search,
+    type,
+    status
+  });
 
-    if (type) query = query.where("type", "==", type);
-    if (status) query = query.where("status", "==", status);
+  const adjustments = dataList as (InventoryAdjustment & { adjustedByName?: string })[];
 
-    if (search) {
-      query = query.where("adjustmentNumber", ">=", search).where("adjustmentNumber", "<=", search + "\uf8ff");
+  // Resolve adjustedBy user names
+  const userIds = Array.from(new Set(adjustments.map((a) => a.adjustedBy).filter(Boolean)));
+  if (userIds.length > 0) {
+    try {
+      const usersResult = await adminAuth.getUsers(userIds.map((id) => ({ uid: id as string })));
+      const userMap = new Map(usersResult.users.map((u) => [u.uid, u.displayName || u.email || "Unknown User"]));
+      adjustments.forEach((adj) => { if (adj.adjustedBy) adj.adjustedByName = userMap.get(adj.adjustedBy); });
+    } catch (authError) {
+      console.warn("[AdjustmentService] Error resolving usernames:", authError);
     }
-
-    const countSnapshot = await query.count().get();
-    const nbHits = countSnapshot.data().count;
-
-    const snapshot = await query.orderBy("createdAt", "desc").offset((pageNumber - 1) * size).limit(size).get();
-
-    const adjustments = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-      };
-    }) as (InventoryAdjustment & { adjustedByName?: string })[];
-
-    // Resolve adjustedBy user names
-    const userIds = Array.from(
-      new Set(adjustments.map((a) => a.adjustedBy).filter(Boolean)),
-    );
-    if (userIds.length > 0) {
-      try {
-        const usersResult = await adminAuth.getUsers(
-          userIds.map((id) => ({ uid: id as string })),
-        );
-        const userMap = new Map(
-          usersResult.users.map((u) => [
-            u.uid,
-            u.displayName || u.email || "Unknown User",
-          ]),
-        );
-
-        adjustments.forEach((adj) => {
-          if (adj.adjustedBy) {
-            adj.adjustedByName = userMap.get(adj.adjustedBy);
-          }
-        });
-      } catch (authError) {
-        console.warn(
-          "[AdjustmentService] Error resolving usernames:",
-          authError,
-        );
-      }
-    }
-
-    return { dataList: adjustments, rowCount: nbHits };
-  } catch (error) {
-    console.error("[AdjustmentService] Error fetching adjustments:", error);
-    throw error;
   }
+
+  return { dataList: adjustments, rowCount: total };
 };
 
-/**
- * Get adjustment by ID
- */
-export const getAdjustmentById = async (
-  id: string,
-): Promise<InventoryAdjustment & { adjustedByName?: string }> => {
-  try {
-    const doc = await adminFirestore.collection(COLLECTION).doc(id).get();
-    if (!doc.exists) {
-      throw new AppError(`Adjustment with ID ${id} not found`, 404);
-    }
-    const data = doc.data() as InventoryAdjustment;
-    let adjustedByName = "";
+export const getAdjustmentById = async (id: string): Promise<InventoryAdjustment & { adjustedByName?: string }> => {
+  const data = await inventoryAdjustmentRepository.findById(id);
+  if (!data) throw new AppError(`Adjustment with ID ${id} not found`, 404);
 
-    if (data.adjustedBy) {
-      try {
-        const user = await adminAuth.getUser(data.adjustedBy);
-        adjustedByName = user.displayName || user.email || "Unknown User";
-      } catch (e) {
-        console.warn(
-          "[AdjustmentService] Error fetching user for detail view",
-          e,
-        );
-      }
+  let adjustedByName = "";
+  if (data.adjustedBy) {
+    try {
+      const user = await adminAuth.getUser(data.adjustedBy);
+      adjustedByName = user.displayName || user.email || "Unknown User";
+    } catch (e) {
+      console.warn("[AdjustmentService] Error fetching user", e);
     }
-
-    return { id: doc.id, ...data, adjustedByName };
-  } catch (error) {
-    console.error("[AdjustmentService] Error fetching adjustment:", error);
-    throw error;
   }
+
+  return { ...data, adjustedByName };
 };
 
-/**
- * Create adjustment and update inventory
- */
 export const createAdjustment = async (
-  adjustment: Omit<
-    InventoryAdjustment,
-    "id" | "adjustmentNumber" | "createdAt" | "updatedAt"
-  >,
+  adjustment: Omit<InventoryAdjustment, "id" | "adjustmentNumber" | "createdAt" | "updatedAt">,
   userId: string,
 ): Promise<InventoryAdjustment> => {
-  try {
-    const adjustmentNumber = await generateAdjustmentNumber();
-    const status = adjustment.status || "DRAFT";
+  const adjustmentNumber = await generateAdjustmentNumber();
+  const status = adjustment.status || "DRAFT";
+  const id = `adj-${nanoid(8)}`;
 
-    // Create adjustment record
-    const id = `adj-${nanoid(8)}`;
-    await adminFirestore
-      .collection(COLLECTION)
-      .doc(id)
-      .set({
-        ...adjustment,
-        status,
-        adjustmentNumber,
-        adjustedBy: userId,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+  const saved = await inventoryAdjustmentRepository.create(id, {
+    ...adjustment,
+    status,
+    adjustmentNumber,
+    adjustedBy: userId,
+  });
 
-    // We do NOT update inventory here anymore. Only on COMPLETION.
-    if (status === "COMPLETED") {
-      await updateInventoryFromAdjustment(adjustment.items, adjustment.type);
-    }
-
-    console.log(
-      `[AdjustmentService] Created adjustment ${adjustmentNumber} with ${adjustment.items.length} items`,
-    );
-
-    return {
-      id,
-      ...adjustment,
-      status,
-      adjustmentNumber,
-    };
-  } catch (error) {
-    console.error("[AdjustmentService] Error creating adjustment:", error);
-    throw error;
+  if (status === "COMPLETED") {
+    await updateInventoryFromAdjustment(adjustment.items, adjustment.type);
   }
+
+  return saved;
 };
 
-/**
- * Update adjustment status
- */
 export const updateAdjustmentStatus = async (
   id: string,
   status: AdjustmentStatus,
-  userId: string, // Who updated it
+  userId: string,
 ): Promise<void> => {
-  try {
-    const docRef = adminFirestore.collection(COLLECTION).doc(id);
-    const doc = await docRef.get();
+  const currentData = await inventoryAdjustmentRepository.findById(id);
+  if (!currentData) throw new AppError("Adjustment not found", 404);
+  if (currentData.status === "COMPLETED") throw new AppError("Cannot change status of a COMPLETED adjustment", 400);
 
-    if (!doc.exists) {
-      throw new AppError("Adjustment not found", 404);
-    }
+  await inventoryAdjustmentRepository.update(id, { status, adjustedBy: userId });
 
-    const currentData = doc.data() as InventoryAdjustment;
-
-    if (currentData.status === "COMPLETED") {
-      throw new AppError("Cannot change status of a COMPLETED adjustment", 400);
-    }
-
-    const updates: Record<string, any> = {
-      status,
-      updatedAt: FieldValue.serverTimestamp(),
-      adjustedBy: userId, // Track who approved/rejected/completed
-    };
-
-    await docRef.update(updates);
-
-    // ⚠️ CRITICAL: Only COMPLETED status triggers physical inventory updates.
-    // APPROVED status is a review milestone and does NOT affect stock levels.
-    if (status === "COMPLETED") {
-      await updateInventoryFromAdjustment(currentData.items, currentData.type);
-    }
-  } catch (error) {
-    console.error("[AdjustmentService] Error updating status:", error);
-    throw error;
+  if (status === "COMPLETED") {
+    await updateInventoryFromAdjustment(currentData.items, currentData.type);
   }
 };
 
-/**
- * Update inventory based on adjustment
- */
-const updateInventoryFromAdjustment = async (
-  items: AdjustmentItem[],
-  type: AdjustmentType,
-): Promise<void> => {
-  const batch = adminFirestore.batch();
-  /* Use plain object to avoid iteration issues */
-  const productUpdates: Record<string, number> = {};
+const updateInventoryFromAdjustment = async (items: AdjustmentItem[], type: AdjustmentType): Promise<void> => {
+  const batch = inventoryAdjustmentRepository.createBatch();
 
   for (const item of items) {
     if (item.quantity <= 0) continue;
 
-    // Get current inventory
-    const inventoryQuery = await adminFirestore
-      .collection(INVENTORY_COLLECTION)
-      .where("productId", "==", item.productId)
-      .where("size", "==", item.size)
-      .where("stockId", "==", item.stockId)
-      .limit(1)
-      .get();
-
-    let currentQty = 0;
-    let inventoryRef: FirebaseFirestore.DocumentReference;
-
-    if (!inventoryQuery.empty) {
-      inventoryRef = inventoryQuery.docs[0].ref;
-      currentQty = inventoryQuery.docs[0].data().quantity || 0;
-    } else {
-      inventoryRef = adminFirestore.collection(INVENTORY_COLLECTION).doc();
-    }
-
-    // Calculate new quantity based on type
-    let newQty = currentQty;
-    let change = 0;
-
     switch (type) {
       case "add":
       case "return":
-        newQty = Math.max(0, currentQty) + item.quantity;
+        await inventoryRepository.upsertStock(batch, item.productId, item.variantId || null, item.size, item.stockId, item.quantity);
         break;
       case "remove":
       case "damage":
-        newQty = Math.max(0, currentQty - item.quantity);
+        await inventoryRepository.deductStock(batch, item.productId, item.variantId || null, item.size, item.stockId, item.quantity);
         break;
       case "transfer":
-        newQty = Math.max(0, currentQty - item.quantity);
-        // Also add to destination
+        await inventoryRepository.deductStock(batch, item.productId, item.variantId || null, item.size, item.stockId, item.quantity);
         if (item.destinationStockId) {
-          await addToDestinationStock(item);
+          await inventoryRepository.upsertStock(batch, item.productId, item.variantId || null, item.size, item.destinationStockId, item.quantity);
         }
         break;
     }
-
-    change = newQty - currentQty;
-
-    if (!inventoryQuery.empty) {
-      batch.update(inventoryRef, {
-        quantity: newQty,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    } else {
-      batch.set(inventoryRef, {
-        productId: item.productId,
-        variantId: item.variantId || null,
-        size: item.size,
-        stockId: item.stockId,
-        quantity: newQty,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    // Accumulate product updates
-    if (change !== 0) {
-      const current = productUpdates[item.productId] || 0;
-      productUpdates[item.productId] = current + change;
-    }
   }
-
 
   await batch.commit();
-};
-
-/**
- * Add stock to destination for transfers
- */
-const addToDestinationStock = async (item: AdjustmentItem): Promise<void> => {
-  if (!item.destinationStockId) return;
-
-  const inventoryQuery = await adminFirestore
-    .collection(INVENTORY_COLLECTION)
-    .where("productId", "==", item.productId)
-    .where("size", "==", item.size)
-    .where("stockId", "==", item.destinationStockId)
-    .limit(1)
-    .get();
-
-  if (!inventoryQuery.empty) {
-    const doc = inventoryQuery.docs[0];
-    const currentQty = doc.data().quantity || 0;
-    await doc.ref.update({
-      quantity: currentQty + item.quantity,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  } else {
-    await adminFirestore.collection(INVENTORY_COLLECTION).add({
-      productId: item.productId,
-      variantId: item.variantId || null,
-      size: item.size,
-      stockId: item.destinationStockId,
-      quantity: item.quantity,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  }
 };
