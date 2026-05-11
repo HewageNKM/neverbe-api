@@ -12,7 +12,7 @@ import { roleRepository } from "@/repositories/RoleRepository";
  */
 export const requirePermission = async (req: Request | null, permission?: string) => {
   let authHeader: string | null = null;
-  
+
   if (req) {
     authHeader = req.headers.get("authorization");
   } else {
@@ -25,7 +25,7 @@ export const requirePermission = async (req: Request | null, permission?: string
   }
 
   const token = authHeader.includes("Bearer ") ? authHeader.split("Bearer ")[1] : authHeader.split(" ")[1];
-  
+
   try {
     const decodedToken = await adminAuth.verifyIdToken(token, true);
     const role = decodedToken.role?.toLowerCase();
@@ -63,24 +63,27 @@ export const handleAuthError = (error: any) => {
 
 export const loginUser = async (userId: string) => {
   try {
-    console.log(`Logging in user with ID: ${userId}`);
+    console.log(`[AuthService] Attempting login for user: ${userId}`);
     const authUser = await adminAuth.getUser(userId);
-
-    if (authUser.disabled) {
-      throw new AppError(`User with ID ${authUser.email} is not active`, 403);
-    }
 
     const customClaims = authUser.customClaims || {};
     const role = customClaims.role as string | "";
+    console.log(`[AuthService] Firebase user found: ${authUser.email}. Assigned Role: ${role || 'None'}`);
+
+    if (authUser.disabled) {
+      console.warn(`[AuthService] Login blocked: User ${authUser.email} is disabled.`);
+      throw new AppError(`User with ID ${authUser.email} is not active`, 403);
+    }
 
     let permissions: string[] = [];
     try {
       if (role) {
         const roleData = await roleRepository.findById(role.toLowerCase());
         permissions = roleData?.permissions || [];
+        console.log(`[AuthService] Permissions fetched for role ${role}: ${permissions.length} items.`);
       }
     } catch (e) {
-      console.warn("Failed to fetch role permissions", e);
+      console.warn(`[AuthService] Failed to fetch role permissions for ${role}:`, e);
     }
 
     const userData: User = {
@@ -95,11 +98,13 @@ export const loginUser = async (userId: string) => {
       updatedAt: authUser.metadata.lastSignInTime || "",
     };
 
+    console.log(`[AuthService] Login logic completed successfully for ${userData.email}`);
     return userData;
-  } catch (e) {
-    console.error(e);
+  } catch (e: any) {
+    console.error("[AuthService] Login CRITICAL Error for ID:", userId, e);
     if (e instanceof AppError) throw e;
-    throw new AppError(e instanceof Error ? e.message : "Login failed", 500);
+    const message = e?.message || "Login failed";
+    throw new AppError(message, 500);
   }
 };
 

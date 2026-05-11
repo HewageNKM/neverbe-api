@@ -9,20 +9,12 @@ export const calculateShippingCost = async (items: any[]) => {
 
   // 1. Calculate Total Weight
   let totalWeight = 0;
-  const productCache = new Map<string, number>();
 
   for (const item of items) {
-    if (productCache.has(item.itemId)) {
-      const w = productCache.get(item.itemId)!;
-      totalWeight += w * item.quantity;
-      continue;
-    }
-
     const product = await productRepository.findById(item.itemId);
     if (product) {
       const weightInGrams = product.weight || 1000;
       const weightInKg = weightInGrams / 1000;
-      productCache.set(item.itemId, weightInKg);
       totalWeight += weightInKg * item.quantity;
     } else {
       totalWeight += 1 * item.quantity;

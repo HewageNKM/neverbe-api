@@ -191,6 +191,15 @@ export abstract class BaseRepository<T> {
   }
 
   /**
+   * Run a Firestore write batch with a callback
+   */
+  async runBatch(callback: (batch: FirebaseFirestore.WriteBatch) => Promise<void>): Promise<void> {
+    const batch = this.createBatch();
+    await callback(batch);
+    await batch.commit();
+  }
+
+  /**
    * Get last document number for a prefix
    */
   protected async findLastNumber(field: string, prefix: string): Promise<string | null> {
