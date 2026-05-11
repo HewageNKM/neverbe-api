@@ -18,21 +18,10 @@ if (!admin.apps.length) {
   }
 }
 
-// 2. Create the instances ONLY when accessed via a "Proxy"
-// This tricks Turbopack into thinking adminFirestore exists 
-// but prevents it from crashing during the build.
-export const adminFirestore = {
-  get firestore() {
-    const db = getFirestore("default");
-    try { db.settings({ ignoreUndefinedProperties: true }); } catch (e) { }
-    return db;
-  },
-  // Map common firestore methods so existing code doesn't break
-  collection: (path: string) => getFirestore("default").collection(path),
-  doc: (path: string) => getFirestore("default").doc(path),
-  runTransaction: (updateFunction: any) => getFirestore("default").runTransaction(updateFunction),
-  batch: () => getFirestore("default").batch(),
-} as unknown as admin.firestore.Firestore;
+// 2. Get the Firestore instance for the "default" enterprise database
+const db = getFirestore("default");
+try { db.settings({ ignoreUndefinedProperties: true }); } catch (e) { }
+export const adminFirestore = db;
 
 // 3. Export the other missing pieces for your Auth and Storage services
 export const adminAuth = admin.auth();
