@@ -3,6 +3,7 @@ import { Order } from "@/model/Order";
 import {
   updateOrAddOrderHash,
   validateDocumentIntegrity,
+  validateManyIntegrity,
 } from "./IntegrityService";
 import { AppError } from "@/utils/apiResponse";
 import { 
@@ -39,7 +40,7 @@ export const getOrders = async (
 
     const { dataList, total } = await orderRepository.findPaginated({
       page,
-      size: (!orderId && !startDateStr && !endDateStr) ? 1000 : size,
+      size,
       startDate,
       endDate,
       status,
@@ -50,16 +51,19 @@ export const getOrders = async (
       paymentMethod
     });
 
-    const ordersWithIntegrity: Order[] = await Promise.all(dataList.map(async (data) => {
-      const integrityResult = await validateDocumentIntegrity("orders", (data as any).id);
+    // ⚡ Batch validate integrity to avoid N+1 queries
+    const integrityMap = await validateManyIntegrity("orders", dataList);
+
+    const ordersWithIntegrity: Order[] = dataList.map((data) => {
+      const id = (data as any).id;
       return {
         ...data,
         userId: data.userId || null, 
-        orderId: (data as any).id,
-        integrity: integrityResult,
+        orderId: id,
+        integrity: integrityMap[id] ?? false,
         customer: data.customer ? { ...data.customer } : null,
       } as unknown as Order;
-    }));
+    });
 
     return { dataList: ordersWithIntegrity, total };
   } catch (error: any) {
@@ -72,7 +76,7 @@ export const getOrder = async (orderId: string): Promise<Order> => {
   const data = await orderRepository.findById(orderId);
   if (!data) throw new AppError(`Order with ID ${orderId} not found`, 404);
 
-  const integrity = await validateDocumentIntegrity("orders", orderId);
+  const integrity = await validateDocumentIntegrity("orders", orderId, data);
 
   return {
     ...data,

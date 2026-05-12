@@ -9,6 +9,10 @@ import stringify from "json-stable-stringify";
 
 export const generateDocumentHash = (docData: any) => {
   const dataToHash = { ...docData };
+  // Remove fields that shouldn't be part of the hash
+  delete dataToHash.integrity;
+  delete dataToHash.updatedAt;
+  
   const canonicalString = stringify(dataToHash);
   const hashingString = `${canonicalString}${process.env.HASH_SECRET}`;
   const hash = crypto.createHash("sha256").update(hashingString).digest("hex");
@@ -18,10 +22,11 @@ export const generateDocumentHash = (docData: any) => {
 export const validateDocumentIntegrity = async (
   collectionName: string,
   docId: string,
+  docData?: any
 ) => {
   try {
-    const docData = await hashRepository.findAnyDocument(collectionName, docId);
-    if (!docData) {
+    const data = docData || await hashRepository.findAnyDocument(collectionName, docId);
+    if (!data) {
       console.warn(`Document ${collectionName}/${docId} not found.`);
       return false;
     }
@@ -33,10 +38,9 @@ export const validateDocumentIntegrity = async (
     }
 
     const storedHash = hashDoc.hashValue;
-    const currentHash = generateDocumentHash(docData);
+    const currentHash = generateDocumentHash(data);
 
     if (currentHash === storedHash) {
-      console.log(`✅ Integrity check PASSED for ${collectionName}/${docId}.`);
       return true;
     } else {
       console.warn(`🚨 TAMPERING DETECTED for ${collectionName}/${docId}`);
@@ -44,8 +48,42 @@ export const validateDocumentIntegrity = async (
     }
   } catch (error) {
     console.error(`Error during validation for ${collectionName}/${docId}:`, error);
-    throw error;
+    return false;
   }
+};
+
+/**
+ * Validate multiple documents at once (Batch Optimized)
+ */
+export const validateManyIntegrity = async (
+  collectionName: string,
+  documents: any[]
+): Promise<Record<string, boolean>> => {
+  if (!documents.length) return {};
+
+  const docIds = documents.map(doc => doc.id || doc.orderId);
+  const ledgerIds = docIds.map(id => `hash_${id}`);
+  
+  // Batch fetch hashes
+  const hashDocs = await hashRepository.findByIds(ledgerIds);
+  const hashMap = new Map(hashDocs.map(h => [h.sourceDocId, h.hashValue]));
+
+  const results: Record<string, boolean> = {};
+
+  documents.forEach(doc => {
+    const id = doc.id || doc.orderId;
+    const storedHash = hashMap.get(id);
+    
+    if (!storedHash) {
+      results[id] = false;
+      return;
+    }
+
+    const currentHash = generateDocumentHash(doc);
+    results[id] = currentHash === storedHash;
+  });
+
+  return results;
 };
 
 export const updateOrAddOrderHash = async (data: any) => {
