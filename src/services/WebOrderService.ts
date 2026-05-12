@@ -44,8 +44,8 @@ export const updatePayment = async (
   const orderData = await orderRepository.updatePaymentStatus(docId, paymentId, status);
 
   if (status.toLowerCase() === "paid") {
-    await sendOrderConfirmedSMS(orderId);
-    await sendOrderConfirmedEmail(orderId);
+    sendOrderConfirmedSMS(orderId).catch(err => console.error("[Notification] SMS failed:", err));
+    sendOrderConfirmedEmail(orderId).catch(err => console.error("[Notification] Email failed:", err));
   }
 
   await updateOrAddOrderHash(orderData);
@@ -195,8 +195,15 @@ export const addWebOrder = async (order: Partial<Order>) => {
     }
     if (isCOD && userPhone) await consumeOTPVerification(userPhone);
 
-    await createAdminNotification("ORDER", "New Website Order", `Order #${order.orderId?.toUpperCase()} placed by ${order.customer?.name || "Guest"}.`, { orderId: order.orderId });
-    
+    // Run notifications asynchronously to avoid blocking the user
+    createAdminNotification("ORDER", "New Website Order", `Order #${order.orderId?.toUpperCase()} placed by ${order.customer?.name || "Guest"}.`, { orderId: order.orderId })
+      .catch(err => console.error("[Notification] Admin failed:", err));
+
+    if (isCOD) {
+      sendOrderConfirmedSMS(order.orderId!).catch(err => console.error("[Notification] COD SMS failed:", err));
+      sendOrderConfirmedEmail(order.orderId!).catch(err => console.error("[Notification] COD Email failed:", err));
+    }
+
     const savedOrder = await orderRepository.findById(order.orderId!);
     if (savedOrder) await updateOrAddOrderHash(savedOrder);
 
