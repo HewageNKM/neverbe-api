@@ -14,7 +14,16 @@ import { nanoid } from "nanoid";
 // --- ERP & Ecommerce Settings ---
 
 export const getERPSettings = async () => {
-  return await settingsRepository.getErpSettings();
+  const settings = await settingsRepository.getErpSettings();
+  if (!settings) {
+    return {
+      defaultStockId: "",
+      onlineStockId: "",
+      ecommerce: { enable: false },
+      pos: { enable: false },
+    };
+  }
+  return settings;
 };
 
 export const updateERPSettings = async (data: any) => {

@@ -42,7 +42,6 @@ export class StockRepository extends BaseRepository<any> {
    */
   async findForDropdown(): Promise<{ id: string; label: string }[]> {
     const snapshot = await this.getActiveQuery()
-      .where("status", "==", true)
       .get();
     return snapshot.docs.map(doc => ({
       id: doc.id,

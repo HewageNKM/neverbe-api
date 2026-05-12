@@ -20,14 +20,7 @@ export class SettingsRepository extends BaseRepository<any> {
    */
   async getErpSettings(): Promise<any> {
     const doc = await this.collection.doc("erp_settings").get();
-    if (!doc.exists) return null;
-
-    const data = doc.data();
-    const ecommerce = data?.ecommerce || {};
-    return {
-      ...ecommerce,
-      stockId: data?.onlineStockId,
-    };
+    return doc.exists ? doc.data() : null;
   }
 
   /**
