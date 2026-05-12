@@ -245,6 +245,33 @@ export class SettingsRepository extends BaseRepository<any> {
       await this.collection.firestore.collection("sms_templates").doc(t.id).set(t);
     }
   }
+  // --- Email Templates ---
+
+  /**
+   * Get all Email templates
+   */
+  async findAllMailTemplates(): Promise<any[]> {
+    const snapshot = await this.collection.firestore.collection("mail_templates").get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }
+
+  /**
+   * Get a specific email template
+   */
+  async getMailTemplate(id: string): Promise<any | null> {
+    const doc = await this.collection.firestore.collection("mail_templates").doc(id).get();
+    return doc.exists ? doc.data() : null;
+  }
+
+  /**
+   * Update an email template
+   */
+  async updateMailTemplate(id: string, data: any): Promise<void> {
+    await this.collection.firestore.collection("mail_templates").doc(id).update({
+      ...data,
+      updatedAt: new Date()
+    });
+  }
 
   // --- Neural Configuration (Legacy but needed) ---
 

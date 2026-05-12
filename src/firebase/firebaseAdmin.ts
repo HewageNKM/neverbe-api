@@ -18,13 +18,11 @@ if (!admin.apps.length) {
   }
 }
 
-// 2. Get the Firestore instance for the "default" enterprise database
 const db = getFirestore("default");
 try { db.settings({ ignoreUndefinedProperties: true }); } catch (e) { }
 export const adminFirestore = db;
 
-// 3. Export the other missing pieces for your Auth and Storage services
 export const adminAuth = admin.auth();
-export const adminStorageBucket = admin
-  .storage()
-  .bucket(process.env.FIREBASE_STORAGE_BUCKET);
+export const adminStorageBucket = process.env.FIREBASE_STORAGE_BUCKET
+  ? admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET)
+  : null;

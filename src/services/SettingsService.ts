@@ -294,3 +294,17 @@ export const updateSMSTemplate = async (id: string, data: any) => {
   await settingsRepository.updateSmsTemplate(id, data);
   return { success: true };
 };
+
+// --- Email Templates ---
+
+export const getEmailTemplates = async () => {
+  const templates = await settingsRepository.findAllMailTemplates();
+  return { data: templates };
+};
+
+export const updateEmailTemplate = async (id: string, data: any) => {
+  const template = await settingsRepository.getMailTemplate(id);
+  if (!template) throw new AppError("Email Template not found", 404);
+  await settingsRepository.updateMailTemplate(id, data);
+  return { success: true };
+};

@@ -89,11 +89,17 @@ export class NotificationRepository extends BaseRepository<any> {
   }
 
   /**
-   * Mail Methods (for Trigger Email extension)
+   * Mail Template Methods
    */
-  async queueEmail(payload: any): Promise<void> {
-    await this.collection.firestore.collection("mail").add(payload);
+  async getMailTemplate(id: string): Promise<any | null> {
+    const doc = await this.collection.firestore.collection("mail_templates").doc(id).get();
+    return doc.exists ? doc.data() : null;
   }
+
+  async saveMailTemplate(id: string, data: any): Promise<void> {
+    await this.collection.firestore.collection("mail_templates").doc(id).set(data);
+  }
+
 
   /**
    * ERP Notifications

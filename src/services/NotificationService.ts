@@ -7,6 +7,7 @@ import { notificationRepository } from "@/repositories/NotificationRepository";
 import { settingsRepository } from "@/repositories/SettingsRepository";
 import { getNowSL, parseToDayjs } from "./UtilService";
 import dayjs from "../utils/dayjs";
+import { MailService } from "./MailService";
 
 /**
  * NotificationService - Business logic for multi-channel messaging
@@ -221,10 +222,143 @@ export const sendeBillSMS = async (orderId: string, phone: string) => {
   }
 };
 
+/**
+ * Seed the order success template into Firestore
+ */
+export const seedOrderSuccessTemplate = async () => {
+  const templateHtml = `<div style="font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8faf5; color: #111827; margin: 0; padding: 16px 8px; width: 100%; box-sizing: border-box;">
+
+    <div style="max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(46, 158, 91, 0.08); border: 1px solid #e0e8d8;">
+        
+        <!-- Header / Logo -->
+        <div style="text-align: center; padding: 28px 16px 16px 16px;">
+            <img src="https://neverbe.lk/mail-logo.png" alt="NEVERBE" width="120" style="display: block; margin: 0 auto;" />
+        </div>
+
+        <!-- Order Confirmation Title -->
+        <div style="padding: 0 24px; text-align: center;">
+            <h1 style="font-size: 28px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.03em; margin: 0 0 8px 0; color: #0e331c; line-height: 1.1;">
+                Got It. Thanks, {{customerName}}.
+            </h1>
+            <p style="color: #2e9e5b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 20px 0;">
+                ORDER #{{orderId}}
+            </p>
+
+            <p style="font-size: 15px; line-height: 1.6; color: #374151; margin: 0 auto 28px auto; max-width: 100%;">
+                We've received your order and are working on it now. We'll email you an update when it ships.
+            </p>
+        </div>
+
+        <!-- Items Ordered Section -->
+        <div style="padding: 0 24px 28px 24px;">
+            <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #f0f5eb; padding-bottom: 12px; margin-bottom: 20px; color: #0e331c;">
+                Items Ordered
+            </div>
+
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+                {{#each items}}
+                <tr>
+                    <td width="80" style="padding-bottom: 20px; vertical-align: top;">
+                        <div style="width: 80px; height: 80px; border-radius: 10px; overflow: hidden; background-color: #f8faf5; border: 1px solid #e0e8d8;">
+                            <img src="{{this.thumbnail}}" alt="{{this.name}}" width="80" height="80" style="width: 80px; height: 80px; object-fit: cover; display: block;" />
+                        </div>
+                    </td>
+                    <td style="padding-left: 16px; padding-bottom: 20px; vertical-align: top;">
+                        <span style="display: block; font-weight: 700; font-size: 15px; margin-bottom: 4px; color: #111827; line-height: 1.3;">
+                            {{this.name}}
+                        </span>
+                        <div style="font-size: 13px; color: #6b7280; line-height: 1.5; font-weight: 500;">
+                            {{#if this.variantName}}<span style="color: #374151;">Variant:</span> {{this.variantName}}<br>{{/if}}
+                            <span style="color: #374151;">Size:</span> {{this.size}} &nbsp; | &nbsp; <span style="color: #374151;">Qty:</span> {{this.quantity}}<br>
+                            <span style="display: block; margin-top: 6px; font-weight: 700; color: #111827; font-size: 14px;">{{this.formattedPrice}}</span>
+                        </div>
+                    </td>
+                </tr>
+                {{/each}}
+            </table>
+
+            <!-- Summary Table -->
+            <div style="background-color: #f8faf5; border-radius: 12px; padding: 16px; margin-top: 4px; border: 1px solid #e0e8d8;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 4px 0; font-size: 13px; color: #4b5563; font-weight: 500;">Subtotal</td>
+                        <td align="right" style="padding: 4px 0; font-size: 13px; color: #111827; font-weight: 600;">{{subtotal}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 4px 0; font-size: 13px; color: #4b5563; font-weight: 500;">Shipping</td>
+                        <td align="right" style="padding: 4px 0; font-size: 13px; color: #111827; font-weight: 600;">{{shippingFee}}</td>
+                    </tr>
+                    {{#if discount}}
+                    <tr>
+                        <td style="padding: 4px 0; font-size: 13px; color: #2e9e5b; font-weight: 600;">Discount</td>
+                        <td align="right" style="padding: 4px 0; font-size: 13px; color: #2e9e5b; font-weight: 600;">-{{discount}}</td>
+                    </tr>
+                    {{/if}}
+                    <tr>
+                        <td style="padding-top: 14px; font-weight: 800; font-size: 18px; color: #0e331c; border-top: 1px solid #cbd5e1;">Total</td>
+                        <td align="right" style="padding-top: 14px; font-weight: 800; font-size: 18px; color: #0e331c; border-top: 1px solid #cbd5e1;">{{total}}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Delivery Details -->
+        <div style="background-color: #fdfdfd; padding: 24px; border-top: 1px solid #e0e8d8;">
+            <div style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #f0f5eb; padding-bottom: 12px; margin-bottom: 20px; color: #0e331c;">
+                Delivery Details
+            </div>
+            
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td width="50%" valign="top" style="padding-right: 12px;">
+                        <strong style="font-size: 12px; text-transform: uppercase; color: #2e9e5b; letter-spacing: 0.05em;">Shipping Address</strong>
+                        <div style="font-size: 13px; color: #4b5563; line-height: 1.6; margin-top: 8px; font-weight: 500;">
+                            {{customer.address}}<br>
+                            {{customer.city}}<br>
+                            {{customer.phone}}
+                        </div>
+                    </td>
+                    <td width="50%" valign="top">
+                        <strong style="font-size: 12px; text-transform: uppercase; color: #2e9e5b; letter-spacing: 0.05em;">Payment Info</strong>
+                        <div style="font-size: 13px; color: #4b5563; line-height: 1.6; margin-top: 8px; font-weight: 500;">
+                            {{paymentMethod}}<br>
+                            <span style="color: #0e331c; font-weight: 700;">{{paymentStatus}}</span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #0e331c; padding: 28px 24px; text-align: center; color: #ffffff;">
+            <p style="margin: 0 0 20px 0;">
+                <a href="https://www.neverbe.lk/contact" style="color: #ffffff; text-decoration: none; margin: 0 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Get Help</a>
+                <a href="https://www.neverbe.lk/policies/shipping-return-policy" style="color: #ffffff; text-decoration: none; margin: 0 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Returns</a>
+            </p>
+            <div style="font-size: 11px; color: #a1ceb4; line-height: 1.8; font-weight: 400;">
+                <strong style="color: #ffffff; font-size: 13px; display: block; margin-bottom: 8px;">NEVERBE, Inc.</strong>
+                330/4/10 New Kandy Road, Delgoda<br>
+                Hotline: 070 520 8990 | 072 924 9999
+            </div>
+        </div>
+    </div>
+
+</div>`;
+
+  await notificationRepository.saveMailTemplate("order_success", {
+    subject: "Got it. Order {{orderId}}",
+    html: templateHtml
+  });
+
+  return { success: true };
+};
+
 export const sendOrderConfirmedEmail = async (orderId: string) => {
   try {
     if (!orderId) return false;
     const order: Order = await getOrderByIdForInvoice(orderId);
+    if (!order) return false;
+
     const email = order?.customer?.email?.trim();
     if (!email) return false;
 
@@ -240,45 +374,43 @@ export const sendOrderConfirmedEmail = async (orderId: string) => {
     const promotionDiscountRaw = (order as any).promotionDiscount || 0;
     const discountRaw = (order.discount || 0) + promotionDiscountRaw + itemDiscountsRaw;
 
-    const emailPayload = {
-      to: [email],
-      template: {
-        name: "order_confirmation",
-        data: {
-          customerName: order.customer?.name || "Customer",
-          orderId: (order.orderId || orderId).toUpperCase(),
-          items: safeItems.map((item) => {
-            const netPrice = (item.price || 0) - (item.discount || 0);
-            return {
-              name: item.name || "Unknown Item",
-              variantName: item.variantName || "",
-              size: item.size || "-",
-              quantity: item.quantity || 1,
-              thumbnail: item.thumbnail || "https://placehold.co/100x100?text=No+Img",
-              formattedPrice: formatMoney(netPrice),
-              originalPrice: (item.discount || 0) > 0 ? formatMoney(item.price || 0) : null,
-            };
-          }),
-          customer: {
-            address: order.customer?.address || "N/A",
-            city: order.customer?.city || "",
-            phone: order.customer?.phone || "",
-            shippingAddress: { line1: order.customer?.address || "N/A", city: order.customer?.city || "", postalCode: "", country: "Sri Lanka" },
-          },
-          paymentMethod: order.paymentMethod || "N/A",
-          paymentStatus: order.paymentStatus || "Pending",
-          subtotal: formatMoney(subtotalRaw),
-          shippingFee: formatMoney(shippingRaw),
-          discount: discountRaw > 0 ? formatMoney(discountRaw) : null,
-          total: formatMoney(totalRaw),
-        },
+    const templateData = {
+      customerName: order.customer?.name || "Customer",
+      orderId: (order.orderId || orderId).toUpperCase(),
+      items: safeItems.map((item) => {
+        const netPrice = (item.price || 0) - (item.discount || 0);
+        return {
+          name: item.name || "Unknown Item",
+          variantName: item.variantName || "",
+          size: item.size || "-",
+          quantity: item.quantity || 1,
+          thumbnail: item.thumbnail || "https://placehold.co/100x100?text=No+Img",
+          formattedPrice: formatMoney(netPrice),
+          originalPrice: (item.discount || 0) > 0 ? formatMoney(item.price || 0) : null,
+        };
+      }),
+      customer: {
+        address: order.customer?.address || "N/A",
+        city: order.customer?.city || "",
+        phone: order.customer?.phone || "",
       },
+      paymentMethod: order.paymentMethod || "N/A",
+      paymentStatus: order.paymentStatus || "Pending",
+      subtotal: formatMoney(subtotalRaw),
+      shippingFee: formatMoney(shippingRaw),
+      discount: discountRaw > 0 ? formatMoney(discountRaw) : null,
+      total: formatMoney(totalRaw),
     };
 
-    await notificationRepository.queueEmail(emailPayload);
-    await notificationRepository.logNotification({ orderId, type: "email", to: email, hashValue });
-    return true;
+    const result = await MailService.sendTemplateEmail([email], "order_success", templateData);
+
+    if (result.success) {
+      await notificationRepository.logNotification({ orderId, type: "email", to: email, hashValue });
+    }
+
+    return result.success;
   } catch (error) {
+    console.error("[NotificationService] sendOrderConfirmedEmail Error:", error);
     return false;
   }
 };
@@ -294,7 +426,7 @@ export const createAdminNotification = async (
     const docId = `${type}_${now.valueOf()}_${Math.random().toString(36).substring(7)}`;
     const notification = { type, title, message, metadata, read: false, createdAt: now.toDate() };
     await notificationRepository.createAdminNotification(docId, notification);
-    
+
     const payload = {
       topic: "admin_alerts",
       notification: { title, body: message },
@@ -379,11 +511,7 @@ export const sendOrderStatusUpdateEmail = async (orderId: string, status: string
       message = `Your order has been cancelled. If this was a mistake, please reach out to us.`;
     }
 
-    const emailPayload = {
-      to: [email],
-      message: {
-        subject,
-        html: `
+    const html = `
           <div style="font-family: sans-serif; padding: 20px; color: #333;">
             <h2 style="color: #16a34a;">Order Update</h2>
             <p>Hi ${name},</p>
@@ -393,13 +521,15 @@ export const sendOrderStatusUpdateEmail = async (orderId: string, status: string
               <strong>Current Status:</strong> ${s}
             </div>
           </div>
-        `,
-      },
-    };
+        `;
 
-    await notificationRepository.queueEmail(emailPayload);
-    await notificationRepository.logNotification({ orderId, type: "email_status", to: email, status: s });
-    return true;
+    const result = await MailService.sendEmail([email], subject, html);
+
+    if (result.success) {
+      await notificationRepository.logNotification({ orderId, type: "email_status", to: email, status: s });
+    }
+
+    return result.success;
   } catch (error) {
     return false;
   }
@@ -430,13 +560,9 @@ export const sendManualNotification = async (
         body: JSON.stringify({ to, text: content }),
       });
     } else {
-      await notificationRepository.queueEmail({
-        to: [to],
-        message: {
-          subject: subject || `Update regarding your order #${orderId?.toUpperCase() || 'NEVERBE'}`,
-          html: `<div style="font-family: sans-serif; padding: 20px;">${content.replace(/\n/g, '<br/>')}</div>`,
-        },
-      });
+      const subjectLine = subject || `Update regarding your order #${orderId?.toUpperCase() || 'NEVERBE'}`;
+      const html = `<div style="font-family: sans-serif; padding: 20px;">${content.replace(/\n/g, '<br/>')}</div>`;
+      await MailService.sendEmail([to], subjectLine, html);
     }
 
     await notificationRepository.logNotification({ orderId: orderId || "CUSTOM", type: `manual_${type}`, to, content });
@@ -445,6 +571,7 @@ export const sendManualNotification = async (
     return false;
   }
 };
+
 
 export const getNotificationLogs = async (orderId: string) => {
   const logs = await notificationRepository.findLogsForOrder(orderId);
