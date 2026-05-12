@@ -13,9 +13,19 @@ export class WebsiteRepository extends BaseRepository<any> {
    * Get website sliders
    */
   async getSliders(): Promise<any[]> {
+    // Try document first
     const doc = await this.collection.doc("sliders").get();
-    if (!doc.exists) return [];
-    return doc.data()?.items || [];
+    if (doc.exists && doc.data()?.items?.length > 0) {
+      return doc.data()?.items || [];
+    }
+
+    // Fallback to collection
+    const snapshot = await this.collection.firestore.collection("sliders").get();
+    if (!snapshot.empty) {
+      return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    return [];
   }
 
   /**
