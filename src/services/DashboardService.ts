@@ -23,19 +23,23 @@ export interface DashboardOverview {
 
 export interface InventoryValue {
   totalValue: number;
-  productCount: number;
-  averageValue: number;
+  totalProducts: number;
+  totalQuantity: number;
+  avgItemValue: number;
 }
 
 export interface ProfitMargins {
   grossMargin: number;
   netMargin: number;
   operatingMargin: number;
+  avgOrderValue: number;
 }
 
-export interface CategoryRevenue {
-  name: string;
-  value: number;
+export interface CategoryData {
+  category: string;
+  revenue: number;
+  orders: number;
+  percentage: number;
 }
 
 export interface ExpenseSummary {
@@ -205,19 +209,22 @@ export const getDailySnapshot = async (): Promise<DashboardOverview> => {
 export const getInventoryValue = async (): Promise<InventoryValue> => {
   const products = await reportRepository.findAllProducts();
   let totalValue = 0;
-  let productCount = 0;
+  let totalProducts = 0;
+  let totalQuantity = 0;
 
   products.forEach((p) => {
     const buyingPrice = p.buyingPrice || 0;
     const stock = p.totalStock || p.currentStock || 0;
     totalValue += buyingPrice * stock;
-    productCount++;
+    totalQuantity += stock;
+    totalProducts++;
   });
 
   return {
     totalValue,
-    productCount,
-    averageValue: productCount > 0 ? totalValue / productCount : 0,
+    totalProducts,
+    totalQuantity,
+    avgItemValue: totalQuantity > 0 ? totalValue / totalQuantity : 0,
   };
 };
 
@@ -243,33 +250,53 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
     grossMargin: Math.round(grossMargin * 100) / 100,
     netMargin: Math.round(netMargin * 100) / 100,
     operatingMargin: Math.round(netMargin * 0.8 * 100) / 100,
+    avgOrderValue: overview.totalOrders > 0 ? Math.round((overview.totalGrossSales / overview.totalOrders) * 100) / 100 : 0,
   };
 };
 
 /**
  * Get revenue distribution by category
  */
-export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
+export const getRevenueByCategory = async (): Promise<CategoryData[]> => {
   const now = getNowSL();
   const startOfMonth = now.startOf("month").toDate();
   const endOfMonth = now.endOf("month").toDate();
 
-  const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth);
-  const categoryMap = new Map<string, number>();
+  const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth, ["Paid", "PAID", "Success", "SUCCESS", "Completed", "COMPLETED"]);
+  
+  // Fetch product categories in batch if missing in orders
+  const productIds = new Set<string>();
+  orders.forEach(o => o.items?.forEach(i => { if (i.itemId) productIds.add(i.itemId); }));
+  const products = await productRepository.findByIds(Array.from(productIds));
+  const productCatMap = new Map(products.map(p => [p.id, p.category]));
+
+  const categoryMap = new Map<string, { revenue: number; orders: number }>();
+  let totalRevenue = 0;
 
   orders.forEach((order) => {
     if (Array.isArray(order.items)) {
       order.items.forEach((item) => {
-        const cat = item.categoryName || "Uncategorized";
+        const cat = item.categoryName || productCatMap.get(item.itemId) || "Uncategorized";
         const revenue = (item.price || 0) * (item.quantity || 0);
-        categoryMap.set(cat, (categoryMap.get(cat) || 0) + revenue);
+        
+        const existing = categoryMap.get(cat) || { revenue: 0, orders: 0 };
+        categoryMap.set(cat, {
+          revenue: existing.revenue + revenue,
+          orders: existing.orders + 1
+        });
+        totalRevenue += revenue;
       });
     }
   });
 
   return Array.from(categoryMap.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+    .map(([category, data]) => ({
+      category,
+      revenue: data.revenue,
+      orders: data.orders,
+      percentage: totalRevenue > 0 ? Math.round((data.revenue / totalRevenue) * 100) : 0
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
 };
 
 /**
@@ -446,30 +473,29 @@ export const getPendingOrdersCount = async (): Promise<PendingOrdersCount> => {
 };
 
 export const getWeeklyTrends = async (): Promise<WeeklyTrends> => {
-  const now = new Date();
+  const now = getNowSL();
+  const start = now.subtract(6, "days").startOf("day").toDate();
+  const end = now.endOf("day").toDate();
+
+  const ordersList = await orderRepository.findByStatusInDateRange(start, end, ["Paid", "PAID", "Success", "SUCCESS", "Completed", "COMPLETED"]);
+
   const labels: string[] = [];
   const orders: number[] = [];
   const revenue: number[] = [];
 
-  const days = Array.from({ length: 7 }, (_, i) => 6 - i);
-  const trends = await Promise.all(days.map(async (i) => {
-    const date = getNowSL().subtract(i, "day");
-    const start = date.startOf("day").toDate();
-    const end = date.endOf("day").toDate();
+  for (let i = 6; i >= 0; i--) {
+    const date = now.subtract(i, "days");
+    const dayStr = date.format("ddd");
+    
+    const dayOrders = ordersList.filter(o => {
+      const createdAt = parseToDayjs(o.createdAt);
+      return createdAt && createdAt.isSame(date, "day");
+    });
 
-    const dayOrders = await orderRepository.findPaidOrdersInDateRange(start, end);
-    return {
-      label: date.format("ddd"),
-      orderCount: dayOrders.length,
-      revenueSum: dayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
-    };
-  }));
-
-  trends.forEach(t => {
-    labels.push(t.label);
-    orders.push(t.orderCount);
-    revenue.push(t.revenueSum);
-  });
+    labels.push(dayStr);
+    orders.push(dayOrders.length);
+    revenue.push(dayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0));
+  }
 
   return { labels, orders, revenue };
 };
