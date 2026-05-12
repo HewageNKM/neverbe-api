@@ -654,3 +654,255 @@ export const getFinancialHealthReport = async (from: string, to: string) => {
     throw error;
   }
 };
+
+/**
+ * Get monthly summary report
+ */
+export const getMonthlySummary = async (from: string, to: string) => {
+  return await getMonthlyRevenueReport(from, to);
+};
+
+/**
+ * Get yearly summary report
+ */
+export const getYearlySummary = async (year: number) => {
+  return await getYearlyRevenueReport(year);
+};
+
+/**
+ * Get top selling products
+ */
+export const getTopSellingProducts = async (
+  from: string,
+  to: string,
+  limit: number = 10,
+) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+
+  const productMap = new Map<
+    string,
+    { name: string; quantity: number; revenue: number }
+  >();
+
+  orders.forEach((order) => {
+    if (order.items && Array.isArray(order.items)) {
+      order.items.forEach((item) => {
+        const existing = productMap.get(item.itemId) || {
+          name: item.name,
+          quantity: 0,
+          revenue: 0,
+        };
+        existing.quantity += item.quantity || 0;
+        existing.revenue += (item.price || 0) * (item.quantity || 0);
+        productMap.set(item.itemId, existing);
+      });
+    }
+  });
+
+  return Array.from(productMap.entries())
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, limit);
+};
+
+/**
+ * Get sales vs discount comparison
+ */
+export const getSalesVsDiscount = async (
+  from: string,
+  to: string,
+  groupBy: "day" | "month" = "day",
+) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+
+  const groups = new Map<string, { sales: number; discount: number }>();
+
+  orders.forEach((order) => {
+    const date =
+      (order.createdAt as any)?.toDate?.() || new Date(order.createdAt as any);
+    const key =
+      groupBy === "day"
+        ? date.toISOString().split("T")[0]
+        : `${date.getFullYear()}-${date.getMonth() + 1}`;
+
+    const existing = groups.get(key) || { sales: 0, discount: 0 };
+    existing.sales += order.total || 0;
+    existing.discount += (order.discount || 0) + (order.promotionDiscount || 0);
+    groups.set(key, existing);
+  });
+
+  return Array.from(groups.entries())
+    .map(([date, data]) => ({ date, ...data }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+};
+
+/**
+ * Get tax report summary
+ */
+export const getTaxReport = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+
+  let totalTax = 0;
+  orders.forEach((o) => {
+    totalTax += o.tax || 0;
+  });
+
+  return { totalTax, orderCount: orders.length };
+};
+
+/**
+ * Fetch live stock data
+ */
+export const fetchLiveStock = async () => {
+  return await reportRepository.findAllProducts();
+};
+
+/**
+ * Fetch low stock alerts
+ */
+export const fetchLowStock = async (threshold: number = 5) => {
+  return await productRepository.findLowStockAlerts(threshold);
+};
+
+/**
+ * Fetch stock valuation
+ */
+export const fetchStockValuationByStock = async () => {
+  const products = await reportRepository.findAllProducts();
+  let totalValuation = 0;
+  products.forEach((p) => {
+    totalValuation += (p.buyingPrice || 0) * (p.totalStock || 0);
+  });
+  return { totalValuation };
+};
+
+/**
+ * Get cash flow report
+ */
+export const getCashFlowReport = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+
+  const methodMap = new Map<string, { fee: number; total: number }>();
+
+  orders.forEach((order) => {
+    const method = order.paymentMethod || "Unknown";
+    const existing = methodMap.get(method) || { fee: 0, total: 0 };
+    existing.total += order.total || 0;
+    existing.fee += order.fee || 0;
+    methodMap.set(method, existing);
+  });
+
+  return Array.from(methodMap.entries()).map(([method, data]) => ({
+    method,
+    ...data,
+  }));
+};
+
+/**
+ * Get customer analytics
+ */
+export const getCustomerAnalytics = async () => {
+  const products = await reportRepository.findAllProducts();
+  return { totalProducts: products.length }; // Simplified stub
+};
+
+/**
+ * Get expense report
+ */
+export const getExpenseReport = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const expenses = await reportRepository.findExpensesForReport({ start, end });
+  return expenses;
+};
+
+/**
+ * Get profit and loss statement
+ */
+export const getProfitLossStatement = async (from: string, to: string) => {
+  return await getFinancialHealthReport(from, to);
+};
+
+/**
+ * Get daily revenue report
+ */
+export const getDailyRevenueReport = async (from: string, to: string) => {
+  return await getDailySaleReport(from, to);
+};
+
+/**
+ * Get monthly revenue report
+ */
+export const getMonthlyRevenueReport = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  return { total: orders.reduce((sum, o) => sum + (o.total || 0), 0) };
+};
+
+/**
+ * Get yearly revenue report
+ */
+export const getYearlyRevenueReport = async (year: number) => {
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  return { total: orders.reduce((sum, o) => sum + (o.total || 0), 0) };
+};
+
+/**
+ * Get sales by brand
+ */
+export const getSalesByBrand = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  const brandMap = new Map<string, number>();
+  orders.forEach(o => {
+    if (o.items) o.items.forEach((i: any) => {
+      const brand = i.brandName || "Unknown";
+      brandMap.set(brand, (brandMap.get(brand) || 0) + (i.price * i.quantity));
+    });
+  });
+  return Array.from(brandMap.entries()).map(([name, value]) => ({ name, value }));
+};
+
+/**
+ * Get sales by category
+ */
+export const getSalesByCategory = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  const catMap = new Map<string, number>();
+  orders.forEach(o => {
+    if (o.items) o.items.forEach((i: any) => {
+      const cat = i.categoryName || "Unknown";
+      catMap.set(cat, (catMap.get(cat) || 0) + (i.price * i.quantity));
+    });
+  });
+  return Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
+};
+
+/**
+ * Get sales by payment method
+ */
+export const getSalesByPaymentMethod = async (from: string, to: string) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  const methodMap = new Map<string, number>();
+  orders.forEach(o => {
+    const method = o.paymentMethod || "Unknown";
+    methodMap.set(method, (methodMap.get(method) || 0) + (o.total || 0));
+  });
+  return Array.from(methodMap.entries()).map(([method, total]) => ({ method, total }));
+};

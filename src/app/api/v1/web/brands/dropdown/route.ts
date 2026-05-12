@@ -1,4 +1,4 @@
-import { getBrandsForDropdown } from "@/services/OtherService";
+import { getBrandDropdown } from "@/services/BrandService";
 import { NextResponse } from "next/server";
 
 
@@ -7,7 +7,7 @@ export const GET = async (req: Request) => {
     console.log("[Brands API] Incoming request");
 
     // --- Step 1: Fetch brands ---
-    const brands = await getBrandsForDropdown();
+    const brands = await getBrandDropdown();
     console.log(`[Brands API] Brands fetched: ${brands.length}`);
     console.log("[Brands API] Brands data:", brands);
 

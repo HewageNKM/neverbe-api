@@ -33,7 +33,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
   // Use repositories instead of adminFirestore
   const pettyCashData = await pettyCashRepository.findForDashboard(startOfMonth);
   const paymentRecordsData = await paymentRecordRepository.findForDashboard(startOfMonth);
-  const ordersData = await orderRepository.findForReport(startOfMonth, new Date());
+  const ordersData = await orderRepository.findForReport({ start: startOfMonth, end: new Date() });
 
   let monthlyExpenses = 0;
   let monthlyIncome = 0;

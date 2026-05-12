@@ -1,4 +1,4 @@
-import { getCategoriesForDropdown } from "@/services/OtherService";
+import { getCategoriesForDropdown } from "@/services/CategoryService";
 import { NextResponse } from "next/server";
 
 

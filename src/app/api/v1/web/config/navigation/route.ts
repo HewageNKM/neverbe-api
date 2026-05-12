@@ -1,4 +1,4 @@
-import { getNavigationConfig } from "@/services/OtherService";
+import { getNavigationConfig } from "@/services/WebsiteService";
 import { NextResponse } from "next/server";
 import { handleAuthError } from "@/services/AuthService";
 
