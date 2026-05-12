@@ -909,3 +909,38 @@ export const getSalesByPaymentMethod = async (from: string, to: string) => {
   });
   return Array.from(methodMap.entries()).map(([method, total]) => ({ method, total }));
 };
+/**
+ * Get refunds and returns report
+ */
+export const getRefundsAndReturns = async (from?: string, to?: string) => {
+  try {
+    const start = from ? parseToDayjs(from)?.toDate() || new Date(0) : new Date(0);
+    const end = to ? parseToDayjs(to)?.toDate() || new Date() : new Date();
+
+    const orders = await reportRepository.findOrdersForAnalysis({
+      start,
+      end,
+      paymentStatus: ["Refunded", "REFUNDED", "Returned", "RETURNED", "Partially Refunded"],
+    });
+
+    const summary = {
+      totalRefunded: 0,
+      totalOrders: orders.length,
+      refundByMethod: {} as Record<string, number>,
+    };
+
+    orders.forEach((order) => {
+      summary.totalRefunded += order.total || 0;
+      const method = order.paymentMethod || "Unknown";
+      summary.refundByMethod[method] = (summary.refundByMethod[method] || 0) + (order.total || 0);
+    });
+
+    return {
+      summary,
+      data: formatListDates(orders, ["createdAt", "updatedAt"]),
+    };
+  } catch (error: any) {
+    console.error("[ReportService] Refunds and returns error:", error);
+    throw error;
+  }
+};
