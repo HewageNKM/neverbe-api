@@ -2,7 +2,7 @@
 runConfig:
   minInstances: 0
   maxInstances: 2
-  cpu: 3
+  cpu: 4
   memoryMiB: 4096
 
 # Server-side Environment Variables and Secrets
