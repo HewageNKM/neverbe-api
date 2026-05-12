@@ -7,11 +7,11 @@ import { toSafeLocaleString } from "./UtilService";
 
 
 /**
- * Unified Auth Guard
- * Verifies token, role, and optional permissions.
- * Throws AppError on failure for global handling.
+ * Basic Auth Guard
+ * Verifies only the token. Does NOT check for roles.
+ * Useful for public website users (customers).
  */
-export const requirePermission = async (req: Request | null, permission?: string) => {
+export const requireAuth = async (req: Request | null) => {
   let authHeader: string | null = null;
 
   if (req) {
@@ -29,22 +29,6 @@ export const requirePermission = async (req: Request | null, permission?: string
 
   try {
     const decodedToken = await adminAuth.verifyIdToken(token, true);
-    const role = decodedToken.role?.toLowerCase();
-
-    if (!role) {
-      throw new AppError("Unauthorized: Access denied (no role)", 403);
-    }
-
-    if (role === "admin") return decodedToken;
-
-    if (permission) {
-      const roleData = await roleRepository.findById(role);
-      const permissions = roleData?.permissions || [];
-      if (!roleData || !permissions.includes(permission)) {
-        throw new AppError(`Forbidden: Missing permission '${permission}'`, 403);
-      }
-    }
-
     return decodedToken;
   } catch (error: any) {
     if (error instanceof AppError) throw error;
@@ -52,6 +36,33 @@ export const requirePermission = async (req: Request | null, permission?: string
     throw new AppError("Unauthorized: Invalid or expired session", 401);
   }
 };
+
+/**
+ * Unified ERP Auth Guard
+ * Verifies token, role, and optional permissions.
+ * Throws AppError on failure for global handling.
+ */
+export const requirePermission = async (req: Request | null, permission?: string) => {
+  const decodedToken = await requireAuth(req);
+  const role = decodedToken.role?.toLowerCase();
+
+  if (!role) {
+    throw new AppError("Unauthorized: Access denied (no role)", 403);
+  }
+
+  if (role === "admin") return decodedToken;
+
+  if (permission) {
+    const roleData = await roleRepository.findById(role);
+    const permissions = roleData?.permissions || [];
+    if (!roleData || !permissions.includes(permission)) {
+      throw new AppError(`Forbidden: Missing permission '${permission}'`, 403);
+    }
+  }
+
+  return decodedToken;
+};
+
 
 export const verifyPosAuth = (permission?: string) => requirePermission(null, permission);
 

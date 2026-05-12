@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission, handleAuthError } from "@/services/AuthService";
+import { requireAuth, handleAuthError } from "@/services/AuthService";
 import { addWebOrder, getOrdersByUserId } from "@/services/WebOrderService";
 import { Order } from "@/model/Order";
 
 export const POST = async (req: NextRequest) => {
   try {
-    const user = await requirePermission(req);
+    const user = await requireAuth(req);
 
     const formData = await req.formData();
     const dataString = formData.get("data") as string;
@@ -25,7 +25,7 @@ export const POST = async (req: NextRequest) => {
 
 export const GET = async (req: NextRequest) => {
   try {
-    const user = await requirePermission(req);
+    const user = await requireAuth(req);
 
     const orders = await getOrdersByUserId(user.uid);
     return NextResponse.json(orders);
