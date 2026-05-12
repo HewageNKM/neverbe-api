@@ -4,123 +4,19 @@ import { Order } from "@/model/Order";
 import { PopularItem } from "@/model/PopularItem";
 import { reportRepository } from "@/repositories/ReportRepository";
 
-/**
- * Get total inventory valuation
- */
-export const getInventoryValue = async (): Promise<InventoryValue> => {
-  const products = await reportRepository.findAllProducts();
-  let totalValue = 0;
-  let productCount = 0;
+// ============================================================
+// Interfaces
+// ============================================================
 
-  products.forEach((p) => {
-    const buyingPrice = p.buyingPrice || 0;
-    const stock = p.totalStock || p.currentStock || 0;
-    totalValue += buyingPrice * stock;
-    productCount++;
-  });
-
-  return {
-    totalValue,
-    productCount,
-    averageValue: productCount > 0 ? totalValue / productCount : 0,
-  };
-};
-
-/**
- * Get high-level profit margins
- */
-export const getProfitMargins = async (): Promise<ProfitMargins> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const overview = await getOverviewByDateRange(startOfMonth, endOfMonth);
-
-  // Gross Margin = (Gross Sales - COGS) / Gross Sales
-  const grossMargin = overview.totalGrossSales > 0
-    ? ((overview.totalGrossSales - overview.totalBuyingCost) / overview.totalGrossSales) * 100
-    : 0;
-
-  // Net Margin = Net Profit / Net Sales
-  const netMargin = overview.totalNetSales > 0
-    ? (overview.totalProfit / overview.totalNetSales) * 100
-    : 0;
-
-  return {
-    grossMargin: Math.round(grossMargin * 100) / 100,
-    netMargin: Math.round(netMargin * 100) / 100,
-    operatingMargin: Math.round(netMargin * 0.8 * 100) / 100, // Estimated operating margin
-  };
-};
-
-/**
- * Get revenue distribution by category
- */
-export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth);
-  const categoryMap = new Map<string, number>();
-
-  orders.forEach((order) => {
-    if (Array.isArray(order.items)) {
-      order.items.forEach((item) => {
-        const cat = item.categoryName || "Uncategorized";
-        const revenue = (item.price || 0) * (item.quantity || 0);
-        categoryMap.set(cat, (categoryMap.get(cat) || 0) + revenue);
-      });
-    }
-  });
-
-  return Array.from(categoryMap.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-};
-
-/**
- * Get monthly expense summary
- */
-export const getExpenseSummary = async (): Promise<ExpenseSummary[]> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const expenses = await reportRepository.findExpensesForReport({
-    start: startOfMonth,
-    end: endOfMonth,
-  });
-
-  const categoryMap = new Map<string, number>();
-  let totalAmount = 0;
-
-  expenses.forEach((exp) => {
-    const cat = exp.category || "General";
-    const amount = exp.amount || 0;
-    categoryMap.set(cat, (categoryMap.get(cat) || 0) + amount);
-    totalAmount += amount;
-  });
-
-  return Array.from(categoryMap.entries()).map(([category, amount]) => ({
-    category,
-    amount,
-    percentage: totalAmount > 0 ? Math.round((amount / totalAmount) * 100) : 0,
-  }));
-};
-
-/**
- * Dashboard Overview Response
- */
 export interface DashboardOverview {
   totalOrders: number;
-  totalGrossSales: number; // Gross Sale = total + discount - orderFee
-  totalNetSales: number; // Net Sale = total - orderFee
-  totalShipping: number; // Total shipping collected (pass-through)
+  totalGrossSales: number;
+  totalNetSales: number;
+  totalShipping: number;
   totalDiscount: number;
-  totalBuyingCost: number; // Product COGS
-  totalFees: number; // Transaction and other fees
-  totalProfit: number; // Net Profit (after COGS, shipping, and fees)
+  totalBuyingCost: number;
+  totalFees: number;
+  totalProfit: number;
 }
 
 export interface InventoryValue {
@@ -146,24 +42,59 @@ export interface ExpenseSummary {
   percentage: number;
 }
 
-/**
- * Yearly Sales Performance Response (for chart)
- */
 export interface YearlySalesPerformance {
-  website: number[]; // 12 months (0=Jan, 11=Dec)
+  website: number[];
   store: number[];
   year: number;
 }
 
-/**
- * Get daily snapshot for the dashboard (today's data)
- */
-export const getDailySnapshot = async (): Promise<DashboardOverview> => {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  return getOverviewByDateRange(startOfDay, endOfDay);
-};
+export interface RecentOrder {
+  orderId: string;
+  paymentStatus: string;
+  customerName: string;
+  grossAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  createdAt: string;
+}
+
+export interface LowStockItem {
+  productId: string;
+  productName: string;
+  variantName: string;
+  size: string;
+  currentStock: number;
+  thumbnail?: string;
+}
+
+export interface MonthlyComparison {
+  currentMonth: { orders: number; revenue: number; profit: number };
+  lastMonth: { orders: number; revenue: number; profit: number };
+  percentageChange: { orders: number; revenue: number; profit: number };
+}
+
+export interface OrderStatusDistribution {
+  pending: number;
+  processing: number;
+  completed: number;
+  cancelled: number;
+}
+
+export interface PendingOrdersCount {
+  pendingPayment: number;
+  pendingFulfillment: number;
+  total: number;
+}
+
+export interface WeeklyTrends {
+  labels: string[];
+  orders: number[];
+  revenue: number[];
+}
+
+// ============================================================
+// Core Functions
+// ============================================================
 
 /**
  * Get overview data for a specific date range
@@ -253,6 +184,123 @@ export const getOverviewByDateRange = async (
 };
 
 /**
+ * Get daily snapshot for the dashboard (today's data)
+ */
+export const getDailySnapshot = async (): Promise<DashboardOverview> => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return getOverviewByDateRange(startOfDay, endOfDay);
+};
+
+// ============================================================
+// Dashboard Widget Functions
+// ============================================================
+
+/**
+ * Get total inventory valuation
+ */
+export const getInventoryValue = async (): Promise<InventoryValue> => {
+  const products = await reportRepository.findAllProducts();
+  let totalValue = 0;
+  let productCount = 0;
+
+  products.forEach((p) => {
+    const buyingPrice = p.buyingPrice || 0;
+    const stock = p.totalStock || p.currentStock || 0;
+    totalValue += buyingPrice * stock;
+    productCount++;
+  });
+
+  return {
+    totalValue,
+    productCount,
+    averageValue: productCount > 0 ? totalValue / productCount : 0,
+  };
+};
+
+/**
+ * Get high-level profit margins
+ */
+export const getProfitMargins = async (): Promise<ProfitMargins> => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const overview = await getOverviewByDateRange(startOfMonth, endOfMonth);
+
+  const grossMargin = overview.totalGrossSales > 0
+    ? ((overview.totalGrossSales - overview.totalBuyingCost) / overview.totalGrossSales) * 100
+    : 0;
+
+  const netMargin = overview.totalNetSales > 0
+    ? (overview.totalProfit / overview.totalNetSales) * 100
+    : 0;
+
+  return {
+    grossMargin: Math.round(grossMargin * 100) / 100,
+    netMargin: Math.round(netMargin * 100) / 100,
+    operatingMargin: Math.round(netMargin * 0.8 * 100) / 100,
+  };
+};
+
+/**
+ * Get revenue distribution by category
+ */
+export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth);
+  const categoryMap = new Map<string, number>();
+
+  orders.forEach((order) => {
+    if (Array.isArray(order.items)) {
+      order.items.forEach((item) => {
+        const cat = item.categoryName || "Uncategorized";
+        const revenue = (item.price || 0) * (item.quantity || 0);
+        categoryMap.set(cat, (categoryMap.get(cat) || 0) + revenue);
+      });
+    }
+  });
+
+  return Array.from(categoryMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+};
+
+/**
+ * Get monthly expense summary
+ */
+export const getExpenseSummary = async (): Promise<ExpenseSummary[]> => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const expenses = await reportRepository.findExpensesForReport({
+    start: startOfMonth,
+    end: endOfMonth,
+  });
+
+  const categoryMap = new Map<string, number>();
+  let totalAmount = 0;
+
+  expenses.forEach((exp) => {
+    const cat = exp.category || "General";
+    const amount = exp.amount || 0;
+    categoryMap.set(cat, (categoryMap.get(cat) || 0) + amount);
+    totalAmount += amount;
+  });
+
+  return Array.from(categoryMap.entries()).map(([category, amount]) => ({
+    category,
+    amount,
+    percentage: totalAmount > 0 ? Math.round((amount / totalAmount) * 100) : 0,
+  }));
+};
+
+/**
  * Get yearly sales performance for chart
  */
 export const getYearlySalesPerformance = async (year?: number): Promise<YearlySalesPerformance> => {
@@ -280,16 +328,6 @@ export const getYearlySalesPerformance = async (year?: number): Promise<YearlySa
 
   return { website: websiteOrders, store: storeOrders, year: currentYear };
 };
-
-export interface RecentOrder {
-  orderId: string;
-  paymentStatus: string;
-  customerName: string;
-  grossAmount: number;
-  discountAmount: number;
-  netAmount: number;
-  createdAt: string;
-}
 
 export const getRecentOrders = async (limitCount: number = 6): Promise<RecentOrder[]> => {
   const orders = await orderRepository.findRecent(limitCount);
@@ -346,24 +384,9 @@ export const getPopularItems = async (
   }).filter(Boolean) as PopularItem[];
 };
 
-export interface LowStockItem {
-  productId: string;
-  productName: string;
-  variantName: string;
-  size: string;
-  currentStock: number;
-  thumbnail?: string;
-}
-
 export const getLowStockAlerts = async (threshold: number = 5, limit: number = 10): Promise<LowStockItem[]> => {
   return await productRepository.findLowStockAlerts(threshold, limit);
 };
-
-export interface MonthlyComparison {
-  currentMonth: { orders: number; revenue: number; profit: number; };
-  lastMonth: { orders: number; revenue: number; profit: number; };
-  percentageChange: { orders: number; revenue: number; profit: number; };
-}
 
 export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
   const now = new Date();
@@ -393,13 +416,6 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
   };
 };
 
-export interface OrderStatusDistribution {
-  pending: number;
-  processing: number;
-  completed: number;
-  cancelled: number;
-}
-
 export const getOrderStatusDistribution = async (): Promise<OrderStatusDistribution> => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
@@ -419,12 +435,6 @@ export const getOrderStatusDistribution = async (): Promise<OrderStatusDistribut
   return distribution;
 };
 
-export interface PendingOrdersCount {
-  pendingPayment: number;
-  pendingFulfillment: number;
-  total: number;
-}
-
 export const getPendingOrdersCount = async (): Promise<PendingOrdersCount> => {
   const [pendingPayment, pendingFulfillment] = await Promise.all([
     orderRepository.countByPaymentStatus("Pending"),
@@ -433,8 +443,6 @@ export const getPendingOrdersCount = async (): Promise<PendingOrdersCount> => {
 
   return { pendingPayment, pendingFulfillment, total: pendingPayment + pendingFulfillment };
 };
-
-export interface WeeklyTrends { labels: string[]; orders: number[]; revenue: number[]; }
 
 export const getWeeklyTrends = async (): Promise<WeeklyTrends> => {
   const now = new Date();
@@ -465,5 +473,3 @@ export const getWeeklyTrends = async (): Promise<WeeklyTrends> => {
 
   return { labels, orders, revenue };
 };
-
-

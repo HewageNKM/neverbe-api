@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-console.error("[CRITICAL DEBUG] Login Route File Loaded");
 import { loginUser, handleAuthError } from "@/services/AuthService";
 
 export const POST = async (req: NextRequest) => {
