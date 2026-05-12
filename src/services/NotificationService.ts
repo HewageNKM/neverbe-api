@@ -499,31 +499,23 @@ export const sendOrderStatusUpdateEmail = async (orderId: string, status: string
 
     const name = order.customer.name || "Customer";
     const s = status.toUpperCase();
-    let subject = `Order Update: #${orderId.toUpperCase()}`;
-    let message = `Your order status has been updated.`;
+    let message = `Your order status has been updated to ${s}.`;
 
     if (s === "COMPLETED") {
-      subject = `Order Completed & Shipped: #${orderId.toUpperCase()}`;
-      const tracking = order.trackingNumber ? `<p>Your order has been shipped via <strong>${order.courier || "our courier partner"}</strong>. Tracking Number: <strong>${order.trackingNumber}</strong></p>` : "";
-      message = `Great news! Your order is now complete and has been shipped. ${tracking} Thank you for choosing NEVERBE!`;
+      const tracking = order.trackingNumber ? `Your order has been shipped via ${order.courier || "our courier partner"}. Tracking Number: ${order.trackingNumber}.` : "Your order is now complete and has been shipped.";
+      message = `Great news! ${tracking} Thank you for choosing NEVERBE!`;
     } else if (s === "CANCELLED") {
-      subject = `Order Cancelled: #${orderId.toUpperCase()}`;
       message = `Your order has been cancelled. If this was a mistake, please reach out to us.`;
     }
 
-    const html = `
-          <div style="font-family: sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #16a34a;">Order Update</h2>
-            <p>Hi ${name},</p>
-            <p>${message}</p>
-            <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
-              <strong>Order ID:</strong> ${orderId.toUpperCase()}<br/>
-              <strong>Current Status:</strong> ${s}
-            </div>
-          </div>
-        `;
+    const templateData = {
+      customerName: name,
+      orderId: orderId.toUpperCase(),
+      status: s,
+      message: message
+    };
 
-    const result = await MailService.sendEmail([email], subject, html);
+    const result = await MailService.sendTemplateEmail([email], "order_status_update", templateData);
 
     if (result.success) {
       await notificationRepository.logNotification({ orderId, type: "email_status", to: email, status: s });
@@ -561,8 +553,12 @@ export const sendManualNotification = async (
       });
     } else {
       const subjectLine = subject || `Update regarding your order #${orderId?.toUpperCase() || 'NEVERBE'}`;
-      const html = `<div style="font-family: sans-serif; padding: 20px;">${content.replace(/\n/g, '<br/>')}</div>`;
-      await MailService.sendEmail([to], subjectLine, html);
+      const htmlContent = content.replace(/\n/g, '<br/>');
+      
+      await MailService.sendTemplateEmail([to], "generic_notification", {
+        subject: subjectLine,
+        content: htmlContent
+      });
     }
 
     await notificationRepository.logNotification({ orderId: orderId || "CUSTOM", type: `manual_${type}`, to, content });

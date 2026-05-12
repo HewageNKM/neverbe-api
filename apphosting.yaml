@@ -2,8 +2,8 @@
 runConfig:
   minInstances: 0
   maxInstances: 2
-  cpu: 4
-  memoryMiB: 8192
+  cpu: 3
+  memoryMiB: 4096
 
 # Server-side Environment Variables and Secrets
 env:
@@ -59,4 +59,13 @@ env:
     availability: ["RUNTIME"]
   - variable: GOOGLE_PLACES_API_KEY
     secret: GOOGLE_PLACES_API_KEY
+    availability: ["RUNTIME"]
+  - variable: MAILTRAP_API_KEY
+    secret: MAILTRAP_API_KEY
+    availability: ["RUNTIME"]
+  - variable: MAIL_FROM
+    secret: MAIL_FROM
+    availability: ["RUNTIME"]
+  - variable: MAIL_FROM_NAME
+    secret: MAIL_FROM_NAME
     availability: ["RUNTIME"]
