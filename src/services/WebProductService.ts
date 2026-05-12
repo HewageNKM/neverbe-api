@@ -119,30 +119,47 @@ export const getSimilarItems = async (itemId: string) => {
 // ====================== Stock & Sitemap ======================
 
 export const getProductStock = async (productId: string, variantId: string, size: string) => {
-  const settings = await settingsRepository.getEcommerceSettings();
-  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
+  const ecomSettings = await settingsRepository.getEcommerceSettings();
+  const erpSettings = await settingsRepository.getErpSettings();
   
-  if (!settings?.stockId && !settings?.onlineStockId) {
+  const stockId = ecomSettings?.stockId || 
+                  ecomSettings?.onlineStockId || 
+                  erpSettings?.stockId || 
+                  erpSettings?.onlineStockId || 
+                  erpSettings?.warehouseId || 
+                  "MAIN";
+  
+  if (stockId === "MAIN" && !ecomSettings?.stockId && !erpSettings?.stockId) {
     console.warn("[WebProductService] stockId missing in settings, falling back to 'MAIN'");
   }
 
-  return productRepository.getStock(productId, variantId, size, stockId);
+  const vId = variantId === "null" || variantId === "" ? null : variantId;
+  return productRepository.getStock(productId, vId, size, stockId);
 };
 
 export const getBatchProductStock = async (
   productId: string, variantId: string, sizes: string[]
 ): Promise<Record<string, number>> => {
-  const settings = await settingsRepository.getEcommerceSettings();
-  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
+  const ecomSettings = await settingsRepository.getEcommerceSettings();
+  const erpSettings = await settingsRepository.getErpSettings();
+  
+  const stockId = ecomSettings?.stockId || 
+                  ecomSettings?.onlineStockId || 
+                  erpSettings?.stockId || 
+                  erpSettings?.onlineStockId || 
+                  erpSettings?.warehouseId || 
+                  "MAIN";
 
-  if (!settings?.stockId && !settings?.onlineStockId) {
+  if (stockId === "MAIN" && !ecomSettings?.stockId && !erpSettings?.stockId) {
     console.warn("[WebProductService] stockId missing in settings, falling back to 'MAIN'");
   }
+
+  const vId = variantId === "null" || variantId === "" ? null : variantId;
 
   const results = await Promise.all(
     sizes.map(async (size) => ({
       size,
-      quantity: await productRepository.getStock(productId, variantId, size, stockId),
+      quantity: await productRepository.getStock(productId, vId, size, stockId),
     })),
   );
 

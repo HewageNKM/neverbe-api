@@ -416,20 +416,31 @@ export class ProductRepository extends BaseRepository<Product> {
    */
   async getStock(
     productId: string,
-    variantId: string,
+    variantId: string | null,
     size: string,
     stockId: string
   ): Promise<number> {
-    const builder = new FirestoreQueryBuilder(
-      this.collection.firestore.collection("stock_inventory")
-    )
+    // Try as string first (standard)
+    let snapshot = await this.collection.firestore
+      .collection("stock_inventory")
       .where("productId", "==", productId)
       .where("variantId", "==", variantId)
       .where("stockId", "==", stockId)
       .where("size", "==", size)
-      .limit(1);
+      .limit(1)
+      .get();
 
-    const snapshot = await builder.build().get();
+    // If not found and size is numeric, try as number
+    if (snapshot.empty && !isNaN(Number(size))) {
+      snapshot = await this.collection.firestore
+        .collection("stock_inventory")
+        .where("productId", "==", productId)
+        .where("variantId", "==", variantId)
+        .where("stockId", "==", stockId)
+        .where("size", "==", Number(size))
+        .limit(1)
+        .get();
+    }
 
     if (snapshot.empty) return 0;
     return snapshot.docs[0].data().quantity ?? 0;
