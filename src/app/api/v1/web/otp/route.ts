@@ -36,7 +36,7 @@ export const POST = async (req: NextRequest) => {
     if (!captchaToken) {
       console.warn("[COD OTP API] Missing captcha token in request");
       return NextResponse.json(
-        { success: false, message: "Captcha token is required" },
+        { success: false, message: "Security verification failed" },
         { status: 400 },
       );
     }

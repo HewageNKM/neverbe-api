@@ -45,11 +45,11 @@ export async function POST(req: Request) {
     
     // Verify reCAPTCHA
     if (!data.captchaToken) {
-      return NextResponse.json({ error: "Missing captcha token" }, { status: 400 });
+      return NextResponse.json({ error: "Security verification failed" }, { status: 400 });
     }
     const isHuman = await verifyCaptchaToken(data.captchaToken);
     if (!isHuman) {
-      return NextResponse.json({ error: "Invalid captcha" }, { status: 403 });
+      return NextResponse.json({ error: "Security verification failed" }, { status: 403 });
     }
 
     // Handle Images

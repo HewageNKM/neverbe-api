@@ -40,7 +40,7 @@ export const sendCODVerificationOTP = async (phone: string, captchaToken: string
     if (!phone || !captchaToken) throw new Error("Missing phone number or CAPTCHA token");
 
     const captchaResponse = await verifyCaptchaToken(captchaToken);
-    if (!captchaResponse) return { success: false, message: "CAPTCHA verification failed." };
+    if (!captchaResponse) return { success: false, message: "Security verification failed. Please try again." };
 
     const now = getNowSL();
     const lastOtp = await notificationRepository.findLatestOTP(phone);

@@ -52,7 +52,7 @@ export const GET = async (
       return new Response(
         JSON.stringify({
           status: false,
-          message: "Captcha verification failed",
+          message: "Security verification failed",
         }),
         { status: 400 }
       );
