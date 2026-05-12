@@ -247,12 +247,12 @@ export const getBatchProductStock = async (
   sizes: string[],
 ): Promise<Record<string, number>> => {
   const settings = await settingsRepository.getEcommerceSettings();
-  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
+  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
 
   const results = await Promise.all(
     sizes.map(async (size) => ({
       size,
-      quantity: await productRepository.getStock(productId, variantId, size, settings.stockId!),
+      quantity: await productRepository.getStock(productId, variantId, size, stockId),
     })),
   );
 
@@ -285,8 +285,8 @@ export const getProductDropdown = async () => {
 
 export const getProductStock = async (productId: string, variantId: string, size: string) => {
   const settings = await settingsRepository.getEcommerceSettings();
-  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
-  return productRepository.getStock(productId, variantId, size, settings.stockId);
+  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
+  return productRepository.getStock(productId, variantId, size, stockId);
 };
 
 export const deleteProduct = async (id: string): Promise<void> => {

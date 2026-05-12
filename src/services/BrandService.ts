@@ -46,6 +46,11 @@ export const getBrands = async (options: {
   };
 };
 
+export const getActiveBrands = async () => {
+  const brands = await brandRepository.findAllActive();
+  return formatListDates(brands);
+};
+
 // 🔹 Read single
 export const getBrandById = async (id: string) => {
   const brand = await brandRepository.findById(id);

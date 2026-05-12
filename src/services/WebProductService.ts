@@ -120,20 +120,29 @@ export const getSimilarItems = async (itemId: string) => {
 
 export const getProductStock = async (productId: string, variantId: string, size: string) => {
   const settings = await settingsRepository.getEcommerceSettings();
-  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
-  return productRepository.getStock(productId, variantId, size, settings.stockId);
+  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
+  
+  if (!settings?.stockId && !settings?.onlineStockId) {
+    console.warn("[WebProductService] stockId missing in settings, falling back to 'MAIN'");
+  }
+
+  return productRepository.getStock(productId, variantId, size, stockId);
 };
 
 export const getBatchProductStock = async (
   productId: string, variantId: string, sizes: string[]
 ): Promise<Record<string, number>> => {
   const settings = await settingsRepository.getEcommerceSettings();
-  if (!settings?.stockId) throw new Error("StockId not found in ERP settings");
+  const stockId = settings?.stockId || settings?.onlineStockId || "MAIN";
+
+  if (!settings?.stockId && !settings?.onlineStockId) {
+    console.warn("[WebProductService] stockId missing in settings, falling back to 'MAIN'");
+  }
 
   const results = await Promise.all(
     sizes.map(async (size) => ({
       size,
-      quantity: await productRepository.getStock(productId, variantId, size, settings.stockId!),
+      quantity: await productRepository.getStock(productId, variantId, size, stockId),
     })),
   );
 

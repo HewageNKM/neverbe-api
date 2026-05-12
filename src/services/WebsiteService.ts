@@ -13,7 +13,7 @@ export interface NavigationConfig {
 }
 
 export const getNavigationConfig = async () => {
-  return await websiteRepository.getNavigation();
+  return await websiteRepository.getNavigationConfig();
 };
 
 export const saveNavigationConfig = async (config: NavigationConfig) => {
@@ -22,7 +22,7 @@ export const saveNavigationConfig = async (config: NavigationConfig) => {
 };
 
 export const getAllBanners = async () => {
-  return formatListDates(await websiteRepository.getBanners());
+  return formatListDates(await websiteRepository.getSliders());
 };
 
 export const addABanner = async (data: any) => {

@@ -44,14 +44,16 @@ export class BrandRepository extends BaseRepository<Brand> {
   /**
    * Get brands for dropdown
    */
-  async findForDropdown(): Promise<{ id: string; label: string }[]> {
+  async findForDropdown(): Promise<{ id: string; label: string; name: string; logoUrl: string }[]> {
     const snapshot = await this.getActiveQuery()
       .where("status", "==", true)
       .get();
       
     return snapshot.docs.map(doc => ({
       id: doc.id,
-      label: doc.data().name,
+      label: doc.data().displayName || doc.data().name,
+      name: doc.data().name,
+      logoUrl: doc.data().logoUrl,
     }));
   }
 
