@@ -40,30 +40,8 @@ export class NotificationRepository extends BaseRepository<any> {
   }
 
   /**
-   * Template Methods
+   * Template Methods moved to SettingsRepository
    */
-  async getSmsTemplate(templateId: string): Promise<any | null> {
-    const doc = await this.collection.firestore.collection("sms_templates").doc(templateId).get();
-    return doc.exists ? doc.data() : null;
-  }
-
-  async findAllTemplates(): Promise<any[]> {
-    const snapshot = await this.collection.firestore.collection("sms_templates").get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  }
-
-  async updateTemplate(id: string, data: any): Promise<void> {
-    await this.collection.firestore.collection("sms_templates").doc(id).update({
-      ...data,
-      updatedAt: new Date()
-    });
-  }
-
-  async seedTemplates(templates: any[]): Promise<void> {
-    for (const t of templates) {
-      await this.collection.firestore.collection("sms_templates").doc(t.id).set(t);
-    }
-  }
 
   /**
    * Tracker Methods

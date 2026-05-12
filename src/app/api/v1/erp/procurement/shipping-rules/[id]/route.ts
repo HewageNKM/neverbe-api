@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   updateShippingRule,
   deleteShippingRule,
-} from "@/services/ShippingRuleService";
+} from "@/services/SettingsService";
 import { requirePermission, handleAuthError } from "@/services/AuthService";
 
 export const PUT = async (

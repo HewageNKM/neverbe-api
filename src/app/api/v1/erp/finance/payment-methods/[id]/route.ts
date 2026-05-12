@@ -3,7 +3,7 @@ import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   updatePaymentMethod,
   deletePaymentMethod,
-} from "@/services/PaymentMethodService";
+} from "@/services/SettingsService";
 
 // PUT: Update payment method
 export async function PUT(

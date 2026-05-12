@@ -3,7 +3,7 @@ import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getShippingRules,
   createShippingRule,
-} from "@/services/ShippingRuleService";
+} from "@/services/SettingsService";
 import { ShippingRule } from "@/model/ShippingRule";
 
 export const GET = async (req: NextRequest) => {

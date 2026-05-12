@@ -3,7 +3,7 @@ import { requirePermission, handleAuthError } from "@/services/AuthService";
 import {
   getPaymentMethods,
   createPaymentMethod,
-} from "@/services/PaymentMethodService";
+} from "@/services/SettingsService";
 
 // GET: List all payment methods
 export async function GET(req: Request) {

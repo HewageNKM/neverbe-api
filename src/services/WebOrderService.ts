@@ -2,7 +2,7 @@ import { orderRepository } from "@/repositories/OrderRepository";
 import { productRepository } from "@/repositories/ProductRepository";
 import { inventoryRepository } from "@/repositories/InventoryRepository";
 import { promotionRepository } from "@/repositories/PromotionRepository";
-import { shippingRepository, settingsRepository } from "@/repositories/SettingsRepositories";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 import {
   sendOrderConfirmedEmail,
   sendOrderConfirmedSMS,
@@ -137,7 +137,7 @@ export const addWebOrder = async (order: Partial<Order>) => {
   }, 0);
 
   let serverShippingFee = 0;
-  const shippingRules = await shippingRepository.findActiveRules();
+  const shippingRules = await settingsRepository.findActiveShippingRules();
   if (shippingRules.length > 0) {
     const match = shippingRules.find(r => totalWeight >= r.minWeight && totalWeight < r.maxWeight);
     if (match) {

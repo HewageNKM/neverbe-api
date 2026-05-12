@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePermission, handleAuthError } from "@/services/AuthService";
-import { getTaxSettings, updateTaxSettings } from "@/services/TaxService";
+import { getTaxSettings, updateTaxSettings } from "@/services/SettingsService";
 
 export const GET = async (req: Request) => {
   try {

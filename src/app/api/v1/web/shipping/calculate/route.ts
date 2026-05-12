@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { calculateShippingCost } from "@/services/ShippingService";
+import { calculateShippingCost } from "@/services/SettingsService";
 import { handleAuthError } from "@/services/AuthService";
 
 export const POST = async (req: NextRequest) => {

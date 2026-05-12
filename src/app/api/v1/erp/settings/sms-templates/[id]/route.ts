@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePermission, handleAuthError } from "@/services/AuthService";
-import { updateSMSTemplate } from "@/services/TemplateService";
+import { updateSMSTemplate } from "@/services/SettingsService";
 
 export const PUT = async (
   req: Request,

@@ -1,10 +1,10 @@
 import { productRepository } from "@/repositories/ProductRepository";
 import { purchaseOrderRepository } from "@/repositories/PurchaseOrderRepository";
 import { orderRepository } from "@/repositories/OrderRepository";
-import { settingsRepository } from "@/repositories/SettingsRepositories";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 import { brandRepository } from "@/repositories/BrandRepository";
 import { categoryRepository } from "@/repositories/CategoryRepository";
-import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
+// paymentMethodRepository import removed as it's now part of settingsRepository
 import { Product } from "@/interfaces/Product";
 import { ProductVariant } from "@/interfaces/ProductVariant";
 
@@ -153,7 +153,7 @@ export const getProductsForSitemap = async () => {
 
 export const getBrandForSitemap = async () => brandRepository.findForSitemap(process.env.WEB_BASE_URL || "");
 export const getCategoriesForSitemap = async () => categoryRepository.findForSitemap(process.env.WEB_BASE_URL || "");
-export const getPaymentMethods = async () => paymentMethodRepository.findForWebsite();
+export const getPaymentMethods = async () => settingsRepository.findPaymentMethodsForWebsite();
 
 // ====================== Hot & Deals ======================
 

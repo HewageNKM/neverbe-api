@@ -1,5 +1,5 @@
 import { requirePermission, handleAuthError } from "@/services/AuthService";
-import { getERPSettings, updateERPSettings } from "@/services/SettingService";
+import { getERPSettings, updateERPSettings } from "@/services/SettingsService";
 import { NextRequest, NextResponse } from "next/server";
 
 export const GET = async (req: NextRequest) => {

@@ -1,10 +1,10 @@
 import { productRepository } from "@/repositories/ProductRepository";
 import { orderRepository } from "@/repositories/OrderRepository";
 import { purchaseOrderRepository } from "@/repositories/PurchaseOrderRepository";
-import { settingsRepository } from "@/repositories/SettingsRepositories";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 import { brandRepository } from "@/repositories/BrandRepository";
 import { categoryRepository } from "@/repositories/CategoryRepository";
-import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
+// paymentMethodRepository import removed as it's now part of settingsRepository
 import { Product } from "@/model/Product";
 import { ProductVariant } from "@/model/ProductVariant";
 import { nanoid } from "nanoid";
@@ -267,7 +267,7 @@ export const getProductsForSitemap = async () => {
 
 export const getBrandForSitemap = async () => brandRepository.findForSitemap(process.env.WEB_BASE_URL || "");
 export const getCategoriesForSitemap = async () => categoryRepository.findForSitemap(process.env.WEB_BASE_URL || "");
-export const getPaymentMethods = async () => paymentMethodRepository.findForWebsite();
+export const getPaymentMethods = async () => settingsRepository.findPaymentMethodsForWebsite();
 
 export const getProductDropdown = async () => {
     const { dataList } = await productRepository.findAllPaginated({ size: 1000, status: true, listing: true });

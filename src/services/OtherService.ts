@@ -1,6 +1,6 @@
 import { brandRepository } from "@/repositories/BrandRepository";
 import { categoryRepository } from "@/repositories/CategoryRepository";
-import { settingsRepository } from "@/repositories/SettingsRepositories";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 import { websiteRepository } from "@/repositories/WebsiteRepository";
 
 /**

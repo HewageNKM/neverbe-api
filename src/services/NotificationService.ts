@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { getOrderByIdForInvoice } from "./WebOrderService";
 import { verifyCaptchaToken } from "./CapchaService";
 import { notificationRepository } from "@/repositories/NotificationRepository";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 
 /**
  * NotificationService - Business logic for multi-channel messaging
@@ -140,7 +141,7 @@ const processTemplate = (content: string, data: Record<string, any>) => {
 
 export const renderMultilingualSMS = async (templateId: string, data: Record<string, any>) => {
   try {
-    const template = await notificationRepository.getSmsTemplate(templateId);
+    const template = await settingsRepository.getSmsTemplate(templateId);
     if (!template) {
       if (templateId === "ORDER_CONFIRMED") return `NEVERBE: Order #${data.orderId?.toUpperCase()} confirmed.`;
       if (templateId === "STATUS_COMPLETED") return `NEVERBE: Order #${data.orderId?.toUpperCase()} shipped.`;

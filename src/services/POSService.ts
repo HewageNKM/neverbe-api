@@ -7,7 +7,7 @@ import { productRepository } from "@/repositories/ProductRepository";
 import { orderRepository } from "@/repositories/OrderRepository";
 import { posCartRepository } from "@/repositories/PosCartRepository";
 import { stockRepository, pettyCashRepository } from "@/repositories/FinanceRepositories";
-import { paymentMethodRepository } from "@/repositories/PaymentMethodRepository";
+import { settingsRepository } from "@/repositories/SettingsRepository";
 
 // ================================
 // 🔹 DATA TYPES
@@ -267,7 +267,7 @@ export const addPettyCashTransaction = async (data: any) => {
 // ================================
 
 export const getPaymentMethods = async () => {
-  return await paymentMethodRepository.findForStore();
+  return await settingsRepository.findPaymentMethodsForStore();
 };
 
 export const getOrderByOrderId = async (orderId: string) => {
