@@ -8,7 +8,7 @@ import {
   updateReceivedQuantities,
 } from "./PurchaseOrderService";
 import { AppError } from "@/utils/apiResponse";
-import { formatEntityDates, formatListDates } from "./UtilService";
+import { formatEntityDates, formatListDates, getNowSL } from "./UtilService";
 
 /**
  * GRNService - Business logic for Good Received Notes
@@ -16,8 +16,8 @@ import { formatEntityDates, formatListDates } from "./UtilService";
  */
 
 const generateGRNNumber = async (): Promise<string> => {
-  const today = new Date();
-  const prefix = `GRN-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const today = getNowSL();
+  const prefix = `GRN-${today.format("YYYYMM")}`;
 
   const lastGRNNumber = await grnRepository.findLastGRNNumber(prefix);
 

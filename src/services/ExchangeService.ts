@@ -7,7 +7,8 @@ import { Order } from "@/model/Order";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 import { updateOrAddOrderHash } from "./IntegrityService";
-import { formatEntityDates, formatListDates } from "./UtilService";
+import { formatEntityDates, formatListDates, getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 const EXCHANGE_WINDOW_DAYS = 14;
 
@@ -16,17 +17,17 @@ const EXCHANGE_WINDOW_DAYS = 14;
  * Delegates data access to repositories
  */
 
-export const calculateWorkingDays = (fromDate: Date, toDate: Date): number => {
+export const calculateWorkingDays = (fromDate: any, toDate: any): number => {
   let count = 0;
-  const current = new Date(fromDate);
-  current.setHours(0, 0, 0, 0);
-  const end = new Date(toDate);
-  end.setHours(23, 59, 59, 999);
+  let current = parseToDayjs(fromDate)?.startOf("day");
+  const end = parseToDayjs(toDate)?.endOf("day");
 
-  while (current <= end) {
-    const dayOfWeek = current.getDay();
+  if (!current || !end) return 0;
+
+  while (current.isBefore(end) || current.isSame(end, "day")) {
+    const dayOfWeek = current.day();
     if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
-    current.setDate(current.getDate() + 1);
+    current = current.add(1, "day");
   }
   return count;
 };
@@ -36,8 +37,7 @@ export const getOrderForExchange = async (orderId: string, stockId?: string) => 
   if (!result) return { eligible: false, message: `Order ${orderId} not found or not a POS order` };
 
   const orderData = result.data;
-  const createdAtDate = orderData.createdAt instanceof Date ? orderData.createdAt : new Date(orderData.createdAt as any);
-  const workingDaysElapsed = calculateWorkingDays(createdAtDate, new Date());
+  const workingDaysElapsed = calculateWorkingDays(orderData.createdAt, getNowSL());
   const eligible = workingDaysElapsed <= EXCHANGE_WINDOW_DAYS;
 
   if (!eligible) return { eligible: false, workingDaysElapsed, message: `Order is ${workingDaysElapsed} working days old.` };

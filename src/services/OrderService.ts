@@ -7,7 +7,7 @@ import {
 } from "./IntegrityService";
 import { AppError } from "@/utils/apiResponse";
 import { sendOrderStatusUpdateSMS, sendOrderStatusUpdateEmail } from "./NotificationService";
-import { toSafeLocaleString, formatListDates } from "./UtilService";
+import { toSafeLocaleString, formatListDates, formatEntityDates, parseToDayjs, getNowSL } from "./UtilService";
 
 /**
  * OrderService - Business logic for orders
@@ -30,9 +30,8 @@ export const getOrders = async (
     let startDate: Date | undefined;
     let endDate: Date | undefined;
     if (startDateStr && endDateStr) {
-      startDate = new Date(startDateStr);
-      endDate = new Date(endDateStr);
-      endDate.setHours(23, 59, 59, 999);
+      startDate = parseToDayjs(startDateStr)?.startOf("day").toDate();
+      endDate = parseToDayjs(endDateStr)?.endOf("day").toDate();
     }
 
     const { dataList, total } = await orderRepository.findPaginated({
@@ -97,7 +96,7 @@ export const updateOrder = async (order: Order & { sendNotification?: boolean },
     ...(order.customer && {
       customer: {
         ...order.customer,
-        updatedAt: new Date() as any, // Repository will handle FieldValue if passed, or just use new Date()
+        updatedAt: getNowSL().toDate(),
       },
     }),
   };

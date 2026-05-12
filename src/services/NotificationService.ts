@@ -5,6 +5,8 @@ import { getOrderByIdForInvoice } from "./WebOrderService";
 import { verifyCaptchaToken } from "./CapchaService";
 import { notificationRepository } from "@/repositories/NotificationRepository";
 import { settingsRepository } from "@/repositories/SettingsRepository";
+import { getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 /**
  * NotificationService - Business logic for multi-channel messaging
@@ -39,35 +41,35 @@ export const sendCODVerificationOTP = async (phone: string, captchaToken: string
     const captchaResponse = await verifyCaptchaToken(captchaToken);
     if (!captchaResponse) return { success: false, message: "CAPTCHA verification failed." };
 
-    const now = new Date();
+    const now = getNowSL();
     const lastOtp = await notificationRepository.findLatestOTP(phone);
 
     if (lastOtp) {
-      const lastRequestTime = (lastOtp.createdAt as any).toDate?.() || new Date(lastOtp.createdAt);
-      const secondsSinceLastRequest = (now.getTime() - lastRequestTime.getTime()) / 1000;
+      const lastRequestTime = parseToDayjs(lastOtp.createdAt);
+      const secondsSinceLastRequest = lastRequestTime ? now.diff(lastRequestTime, "second") : Infinity;
 
       if (secondsSinceLastRequest < COOLDOWN_SECONDS) {
         return { success: false, message: `Please wait ${Math.ceil(COOLDOWN_SECONDS - secondsSinceLastRequest)} seconds.` };
       }
 
-      const expiresAt = (lastOtp.expiresAt as any).toDate?.() || new Date(lastOtp.expiresAt);
-      if (!lastOtp.verified && expiresAt > now) {
+      const expiresAt = parseToDayjs(lastOtp.expiresAt);
+      if (!lastOtp.verified && expiresAt && expiresAt.isAfter(now)) {
         return { success: false, message: "An active OTP already exists." };
       }
     }
 
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
-    const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60000);
+    const expiresAt = now.add(OTP_EXPIRY_MINUTES, "minute").toDate();
 
     await notificationRepository.createOTP({
       phone,
       otpHash,
-      createdAt: now,
+      createdAt: now.toDate(),
       expiresAt,
       verified: false,
       attempts: 0,
-      ttl: new Date(now.getTime() + OTP_TTL_DAYS * 24 * 60 * 60 * 1000),
+      ttl: now.add(OTP_TTL_DAYS, "day").toDate(),
     });
 
     const text = `Your verification code is ${otp}. Valid for 5 minutes.`;
@@ -90,10 +92,10 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
     const lastOtp = await notificationRepository.findLatestOTP(phone);
     if (!lastOtp) return { success: false, message: "No OTP found." };
 
-    const now = new Date();
-    const expiresAt = (lastOtp.expiresAt as any).toDate?.() || new Date(lastOtp.expiresAt);
+    const now = getNowSL();
+    const expiresAt = parseToDayjs(lastOtp.expiresAt);
     if (lastOtp.verified) return { success: false, message: "OTP already verified." };
-    if (now > expiresAt) return { success: false, message: "OTP expired." };
+    if (!expiresAt || now.isAfter(expiresAt)) return { success: false, message: "OTP expired." };
 
     if (lastOtp.otpHash !== hashOTP(otp)) {
       const newAttempts = (lastOtp.attempts || 0) + 1;
@@ -101,7 +103,7 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
       return { success: false, message: "Invalid OTP." };
     }
 
-    await notificationRepository.updateOTP(lastOtp.id, { verified: true, verifiedAt: now });
+    await notificationRepository.updateOTP(lastOtp.id, { verified: true, verifiedAt: now.toDate() });
     return { success: true, message: "OTP verified successfully." };
   } catch (error) {
     console.error(`[OTP Service] OTP verification failed:`, error);
@@ -111,7 +113,7 @@ export const verifyCODOTP = async (phone: string, otp: string) => {
 
 export const isOTPVerifiedRecently = async (phone: string): Promise<boolean> => {
   try {
-    const cutoffDate = new Date(Date.now() - 15 * 60000);
+    const cutoffDate = getNowSL().subtract(15, "minute").toDate();
     const data = await notificationRepository.findRecentVerifiedOTP(phone, cutoffDate);
     return !!data && !data.consumed;
   } catch (error) {
@@ -123,7 +125,7 @@ export const consumeOTPVerification = async (phone: string): Promise<void> => {
   try {
     const lastOtp = await notificationRepository.findLatestOTP(phone);
     if (lastOtp && lastOtp.verified) {
-      await notificationRepository.updateOTP(lastOtp.id, { consumed: true, consumedAt: new Date() });
+      await notificationRepository.updateOTP(lastOtp.id, { consumed: true, consumedAt: getNowSL().toDate() });
     }
   } catch (error) {
     console.error(`[OTP Service] Error consuming OTP verification:`, error);
@@ -288,8 +290,9 @@ export const createAdminNotification = async (
   metadata: Record<string, any> = {}
 ) => {
   try {
-    const docId = `${type}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const notification = { type, title, message, metadata, read: false, createdAt: new Date() };
+    const now = getNowSL();
+    const docId = `${type}_${now.valueOf()}_${Math.random().toString(36).substring(7)}`;
+    const notification = { type, title, message, metadata, read: false, createdAt: now.toDate() };
     await notificationRepository.createAdminNotification(docId, notification);
     
     const payload = {
@@ -446,19 +449,15 @@ export const sendManualNotification = async (
 export const getNotificationLogs = async (orderId: string) => {
   const logs = await notificationRepository.findLogsForOrder(orderId);
   return logs.map(data => {
-    let timestamp = data.createdAt;
-    if (timestamp?.toDate) timestamp = timestamp.toDate().getTime();
-    else if (timestamp?.seconds) timestamp = timestamp.seconds * 1000;
-    return { ...data, createdAt: timestamp || 0 };
+    const timestamp = parseToDayjs(data.createdAt)?.valueOf() || 0;
+    return { ...data, createdAt: timestamp };
   }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 };
 
 export const getAllNotificationLogs = async (page: number = 1, pageSize: number = 20, search?: string) => {
   const { logs, total } = await notificationRepository.findAllLogs({ page, pageSize, search });
   const formattedLogs = logs.map(data => {
-    let timestamp = data.createdAt;
-    if (timestamp?.toDate) timestamp = timestamp.toDate().getTime();
-    else if (timestamp?.seconds) timestamp = timestamp.seconds * 1000;
+    const timestamp = parseToDayjs(data.createdAt)?.valueOf() || 0;
     return { ...data, createdAt: timestamp };
   });
   return { logs: formattedLogs, total };

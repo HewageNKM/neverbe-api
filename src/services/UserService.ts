@@ -1,7 +1,7 @@
 import { userRepository } from "@/repositories/UserRepository";
 import { User } from "@/model/User";
 import { adminAuth } from "@/firebase/firebaseAdmin";
-import { toSafeLocaleString, formatListDates } from "./UtilService";
+import { toSafeLocaleString, formatListDates, parseToDayjs } from "./UtilService";
 
 /**
  * User Service - handles business logic for users
@@ -36,8 +36,8 @@ export const getUsers = async (params: {
       status: false,
       email: user.email || "",
       username: user.displayName || "",
-      createdAt: user.metadata.creationTime?.toLocaleString() || "",
-      updatedAt: user.metadata.lastSignInTime?.toLocaleString() || "",
+      createdAt: parseToDayjs(user.metadata.creationTime)?.format("DD/MM/YYYY, hh:mm:ss a") || "",
+      updatedAt: parseToDayjs(user.metadata.lastSignInTime)?.format("DD/MM/YYYY, hh:mm:ss a") || "",
     } as User));
 
   // 3. Combine and apply search filter

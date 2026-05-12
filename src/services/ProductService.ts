@@ -13,6 +13,8 @@ import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
 import { Order } from "@/model/Order";
 import { PopularItem } from "@/model/PopularItem";
+import { getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 const BUCKET = adminStorageBucket;
 
@@ -22,7 +24,7 @@ const uploadThumbnail = async (
   file: File,
   id: string,
 ): Promise<Product["thumbnail"]> => {
-  const filePath = `products/${id}/thumbnail/thumb_${Date.now()}.webp`;
+  const filePath = `products/${id}/thumbnail/thumb_${getNowSL().valueOf()}.webp`;
   const url = await uploadCompressedImage(file, filePath);
 
   return {
@@ -39,22 +41,12 @@ const getApprovedPOProductIds = async (): Promise<Set<string>> => {
 const enrichProductsWithLabels = async (
   products: Product[],
 ): Promise<Product[]> => {
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
+  const ninetyDaysAgo = getNowSL().subtract(90, "day");
   const approvedPOProductIds = await getApprovedPOProductIds();
 
   return products.map((product) => {
-    let createdAtDate: Date | null = null;
-    if (product.createdAt) {
-        if (typeof (product.createdAt as any).toDate === 'function') {
-            createdAtDate = (product.createdAt as any).toDate();
-        } else {
-            createdAtDate = new Date(product.createdAt);
-        }
-    }
-
-    const isNewArrival = createdAtDate && createdAtDate >= ninetyDaysAgo;
+    const createdAt = parseToDayjs(product.createdAt);
+    const isNewArrival = createdAt && (createdAt.isAfter(ninetyDaysAgo) || createdAt.isSame(ninetyDaysAgo, "day"));
     const isRestockingSoon = !product.inStock && approvedPOProductIds.has(product.id || product.productId);
 
     return {
@@ -167,10 +159,10 @@ export const getPopularProducts = async (
   endDate: string,
   size: number,
 ): Promise<PopularItem[]> => {
-  const startDay = new Date(startDate);
-  const endDay = new Date(endDate);
-  startDay.setHours(0, 0, 0, 0);
-  endDay.setHours(23, 59, 59, 999);
+  const startDay = parseToDayjs(startDate)?.startOf("day").toDate();
+  const endDay = parseToDayjs(endDate)?.endOf("day").toDate();
+
+  if (!startDay || !endDay) return [];
 
   const orders = await orderRepository.findPaidOrdersInDateRange(startDay, endDay);
   
@@ -260,7 +252,7 @@ export const getProductsForSitemap = async () => {
   const baseUrl = process.env.WEB_BASE_URL;
   return products.map((p) => ({
     url: `${baseUrl}/collections/products/${p.id}`,
-    lastModified: new Date(),
+    lastModified: getNowSL().toDate(),
     priority: 0.7,
   }));
 };

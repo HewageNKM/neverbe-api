@@ -6,7 +6,8 @@ import { updateBankAccountBalance } from "./BankAccountService";
 import { Timestamp } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
-import { toSafeLocaleString, formatEntityDates, formatListDates } from "./UtilService";
+import { toSafeLocaleString, formatEntityDates, formatListDates, getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 /**
  * SupplierInvoiceService - Business logic for supplier invoices
@@ -25,12 +26,15 @@ export const getSupplierInvoices = async (filters?: {
   });
 
   if (filters?.startDate || filters?.endDate) {
-    const start = filters?.startDate ? new Date(filters.startDate).getTime() : 0;
-    const end = filters?.endDate ? new Date(filters.endDate).getTime() : Infinity;
+    const start = parseToDayjs(filters.startDate)?.startOf("day");
+    const end = parseToDayjs(filters.endDate)?.endOf("day");
 
     docs = docs.filter((doc) => {
-      const date = doc.dueDate instanceof Timestamp ? doc.dueDate.toMillis() : new Date(doc.dueDate as string).getTime();
-      return date >= start && date <= end;
+      const d = parseToDayjs(doc.dueDate);
+      if (!d) return true;
+      if (start && d.isBefore(start)) return false;
+      if (end && d.isAfter(end)) return false;
+      return true;
     });
   }
 
@@ -71,8 +75,8 @@ export const createSupplierInvoice = async (
     isDeleted: false,
   };
 
-  if (data.issueDate) newInvoice.issueDate = Timestamp.fromDate(new Date(data.issueDate as string));
-  if (data.dueDate) newInvoice.dueDate = Timestamp.fromDate(new Date(data.dueDate as string));
+  if (data.issueDate) newInvoice.issueDate = parseToDayjs(data.issueDate)?.toDate() || null;
+  if (data.dueDate) newInvoice.dueDate = parseToDayjs(data.dueDate)?.toDate() || null;
 
   return await supplierInvoiceRepository.create(id, newInvoice);
 };
@@ -101,8 +105,8 @@ export const updateSupplierInvoice = async (
     updates.status = total - paid <= 0 ? "PAID" : paid > 0 ? "PARTIAL" : "PENDING";
   }
 
-  if (data.issueDate) updates.issueDate = Timestamp.fromDate(new Date(data.issueDate as string));
-  if (data.dueDate) updates.dueDate = Timestamp.fromDate(new Date(data.dueDate as string));
+  if (data.issueDate) updates.issueDate = parseToDayjs(data.issueDate)?.toDate() || null;
+  if (data.dueDate) updates.dueDate = parseToDayjs(data.dueDate)?.toDate() || null;
 
   delete (updates as any).id;
   delete (updates as any).createdAt;
@@ -122,14 +126,17 @@ export const getInvoiceAgingSummary = async (): Promise<any> => {
   const partial = await getSupplierInvoices({ status: "PARTIAL" });
   const allUnpaid = [...pending, ...partial];
 
-  const now = Date.now();
+  const now = getNowSL();
+  const next7Days = now.add(7, "day").endOf("day");
   const summary = { overdue: 0, due7Days: 0, totalPayable: 0, count: allUnpaid.length };
 
   allUnpaid.forEach((inv) => {
     summary.totalPayable += inv.balance;
-    const due = inv.dueDate instanceof Timestamp ? inv.dueDate.toMillis() : new Date(inv.dueDate as string).getTime();
-    if (due < now) summary.overdue += inv.balance;
-    else if (due < now + 7 * 24 * 60 * 60 * 1000) summary.due7Days += inv.balance;
+    const due = parseToDayjs(inv.dueDate);
+    if (due) {
+      if (due.isBefore(now, "day")) summary.overdue += inv.balance;
+      else if (due.isBefore(next7Days) || due.isSame(next7Days, "day")) summary.due7Days += inv.balance;
+    }
   });
 
   return summary;
@@ -157,7 +164,7 @@ export const recordInvoicePayment = async (
     id: paymentId,
     type: "expense",
     amount,
-    date: new Date(),
+    date: getNowSL().toDate(),
     category: "Supplier Payment",
     description: notes || `Payment for Invoice #${invoice.invoiceNumber}`,
     relatedId: invoiceId,
