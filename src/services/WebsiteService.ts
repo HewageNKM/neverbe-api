@@ -1,5 +1,6 @@
 import { websiteRepository } from "@/repositories/WebsiteRepository";
 import { adminStorageBucket } from "@/firebase/firebaseAdmin";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * WebsiteService - Business logic for site configuration and banners
@@ -21,7 +22,7 @@ export const saveNavigationConfig = async (config: NavigationConfig) => {
 };
 
 export const getAllBanners = async () => {
-  return await websiteRepository.getBanners();
+  return formatListDates(await websiteRepository.getBanners());
 };
 
 export const addABanner = async (data: any) => {

@@ -1,6 +1,7 @@
 import { roleRepository } from "@/repositories/RoleRepository";
 import { Role, Permission } from "@/model/Role";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * RoleService - Business logic for roles and permissions
@@ -138,9 +139,10 @@ export const deleteRole = async (roleId: string): Promise<void> => {
 };
 
 export const getRole = async (roleId: string): Promise<Role | null> => {
-  return await roleRepository.findById(roleId);
+  const role = await roleRepository.findById(roleId);
+  return role ? formatEntityDates(role) : null;
 };
 
 export const getAllRoles = async (): Promise<Role[]> => {
-  return await roleRepository.findAllRoles();
+  return formatListDates(await roleRepository.findAllRoles());
 };

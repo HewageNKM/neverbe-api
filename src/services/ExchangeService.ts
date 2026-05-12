@@ -7,6 +7,7 @@ import { Order } from "@/model/Order";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
 import { updateOrAddOrderHash } from "./IntegrityService";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 const EXCHANGE_WINDOW_DAYS = 14;
 
@@ -44,7 +45,7 @@ export const getOrderForExchange = async (orderId: string, stockId?: string) => 
 
   return {
     eligible: true,
-    order: { ...orderData, docId: result.docId, createdAt: createdAtDate.toISOString() } as Order & { docId: string },
+    order: formatEntityDates({ ...orderData, docId: result.docId }) as Order & { docId: string },
     workingDaysElapsed,
   };
 };
@@ -146,9 +147,10 @@ export const processExchange = async (request: ExchangeRequest, userId: string, 
   const updatedOrder = await orderRepository.findById(order.docId);
   if (updatedOrder) await updateOrAddOrderHash(updatedOrder);
 
-  return (await exchangeRepository.findById(exchangeId)) as ExchangeRecord;
+  const record = await exchangeRepository.findById(exchangeId);
+  return formatEntityDates(record as any);
 };
 
-export const getExchangeById = async (id: string) => exchangeRepository.findById(id);
-export const getExchangesByOrderId = async (id: string) => exchangeRepository.findByOrderId(id);
-export const getRecentExchanges = async (stockId?: string, limit: number = 50) => exchangeRepository.findRecent({ stockId, limit });
+export const getExchangeById = async (id: string) => formatEntityDates((await exchangeRepository.findById(id)) as any);
+export const getExchangesByOrderId = async (id: string) => formatListDates((await exchangeRepository.findByOrderId(id)) as any);
+export const getRecentExchanges = async (stockId?: string, limit: number = 50) => formatListDates((await exchangeRepository.findRecent({ stockId, limit })) as any);

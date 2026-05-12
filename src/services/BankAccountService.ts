@@ -2,6 +2,7 @@ import { bankAccountRepository } from "@/repositories/BankAccountRepository";
 import { BankAccount } from "@/model/BankAccount";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * BankAccountService - Business logic for bank accounts
@@ -14,7 +15,7 @@ import { AppError } from "@/utils/apiResponse";
 export const getBankAccounts = async (
   status?: boolean
 ): Promise<BankAccount[]> => {
-  return await bankAccountRepository.findAllWithStatus(status);
+  return formatListDates(await bankAccountRepository.findAllWithStatus(status));
 };
 
 /**
@@ -23,7 +24,7 @@ export const getBankAccounts = async (
 export const getBankAccountById = async (id: string): Promise<BankAccount> => {
   const account = await bankAccountRepository.findById(id);
   if (!account) throw new AppError(`Bank Account with ID ${id} not found`, 404);
-  return account;
+  return formatEntityDates(account);
 };
 
 /**

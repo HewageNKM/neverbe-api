@@ -5,6 +5,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { uploadFile } from "@/services/StorageService";
 import { AppError } from "@/utils/apiResponse";
 import { updateBankAccountBalance } from "./BankAccountService";
+import { toSafeLocaleString, formatEntityDates, formatListDates, parseToDayjs } from "./UtilService";
 
 /**
  * PettyCashService - Business logic for petty cash entries
@@ -28,7 +29,7 @@ export const addPettyCash = async (
   const newEntry = {
     ...data,
     id,
-    date: data.date instanceof Timestamp ? data.date : Timestamp.fromDate(new Date(data.date as any)),
+    date: data.date instanceof Timestamp ? data.date : Timestamp.fromDate(parseToDayjs(data.date)?.toDate() || new Date()),
     attachment: attachmentUrl,
     status: "PENDING",
     isDeleted: false,
@@ -38,12 +39,9 @@ export const addPettyCash = async (
 
   await pettyCashRepository.create(id, newEntry as any);
 
-  return {
+  return formatEntityDates({
     ...newEntry,
-    date: (newEntry.date as Timestamp).toDate().toISOString(),
-    createdAt: (now as Timestamp).toDate().toISOString(),
-    updatedAt: (now as Timestamp).toDate().toISOString(),
-  } as any;
+  } as any, ["date", "createdAt", "updatedAt"]);
 };
 
 export const updatePettyCash = async (
@@ -65,7 +63,7 @@ export const updatePettyCash = async (
     ...data,
     attachment: attachmentUrl,
   };
-  if (data.date) updates.date = data.date instanceof Timestamp ? data.date : Timestamp.fromDate(new Date(data.date as any));
+  if (data.date) updates.date = data.date instanceof Timestamp ? data.date : Timestamp.fromDate(parseToDayjs(data.date)?.toDate() || new Date());
 
   await pettyCashRepository.update(id, updates);
   return await pettyCashRepository.findById(id) as PettyCash;
@@ -92,13 +90,7 @@ export const getPettyCashList = async (
   });
 
   // Business Logic: Formatting and Search
-  let filtered = results.map(d => ({
-    ...d,
-    date: d.date instanceof Timestamp ? d.date.toDate().toISOString() : d.date,
-    createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toDate().toISOString() : d.createdAt,
-    updatedAt: d.updatedAt instanceof Timestamp ? d.updatedAt.toDate().toISOString() : d.updatedAt,
-    reviewedAt: d.reviewedAt instanceof Timestamp ? d.reviewedAt.toDate().toISOString() : d.reviewedAt,
-  } as PettyCash));
+  let filtered = formatListDates(results, ["date", "createdAt", "updatedAt", "reviewedAt"]) as any[];
 
   if (filters?.search) {
     const s = filters.search.toLowerCase();
@@ -110,12 +102,12 @@ export const getPettyCashList = async (
   }
 
   if (filters?.fromDate) {
-    const fd = new Date(filters.fromDate).getTime();
-    filtered = filtered.filter(r => new Date(r.date as string).getTime() >= fd);
+    const fd = parseToDayjs(filters.fromDate)?.valueOf() || 0;
+    filtered = filtered.filter(r => (parseToDayjs(r.date)?.valueOf() || 0) >= fd);
   }
   if (filters?.toDate) {
-    const td = new Date(filters.toDate).getTime() + 86400000;
-    filtered = filtered.filter(r => new Date(r.date as string).getTime() < td);
+    const td = parseToDayjs(filters.toDate)?.endOf("day").valueOf() || 0;
+    filtered = filtered.filter(r => (parseToDayjs(r.date)?.valueOf() || 0) <= td);
   }
 
   const total = filtered.length;
@@ -128,13 +120,9 @@ export const getPettyCashById = async (id: string): Promise<PettyCash> => {
   const d = await pettyCashRepository.findById(id);
   if (!d) throw new AppError(`Petty Cash entry with ID ${id} not found`, 404);
 
-  return {
+  return formatEntityDates({
     ...d,
-    date: d.date instanceof Timestamp ? d.date.toDate().toISOString() : d.date,
-    createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toDate().toISOString() : d.createdAt,
-    updatedAt: d.updatedAt instanceof Timestamp ? d.updatedAt.toDate().toISOString() : d.updatedAt,
-    reviewedAt: d.reviewedAt instanceof Timestamp ? d.reviewedAt.toDate().toISOString() : d.reviewedAt,
-  } as PettyCash;
+  } as any, ["date", "createdAt", "updatedAt", "reviewedAt"]);
 };
 
 export const deletePettyCash = async (id: string): Promise<void> => {

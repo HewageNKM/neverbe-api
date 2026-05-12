@@ -3,10 +3,13 @@ import { reportRepository } from "@/repositories/ReportRepository";
 import { brandRepository } from "@/repositories/BrandRepository";
 import { categoryRepository } from "@/repositories/CategoryRepository";
 import { productRepository } from "@/repositories/ProductRepository";
-import { toSafeLocaleString } from "./UtilService";
-import dayjs from "dayjs";
+import { toSafeLocaleString, formatListDates } from "./UtilService";
+import dayjs, { SL_TZ } from "../utils/dayjs";
+
 import { Order } from "@/model/Order";
 import { Timestamp } from "firebase-admin/firestore";
+
+// Using centralized SL_TZ from dayjs utility
 
 /**
  * ReportService - Business logic for analytical reports
@@ -26,17 +29,18 @@ export const getDailySaleReport = async (
     });
 
     const report: any[] = [];
-    let currentDate = dayjs(from);
-    const endDate = dayjs(to);
+    let currentDate = dayjs(from).tz(SL_TZ).startOf("day");
+    const endDate = dayjs(to).tz(SL_TZ).startOf("day");
 
     while (
       currentDate.isBefore(endDate) ||
       currentDate.isSame(endDate, "day")
     ) {
       const dateStr = currentDate.format("YYYY-MM-DD");
-      const dayOrders = data.filter((o) =>
-        dayjs(o.createdAt.toDate()).isSame(currentDate, "day"),
-      );
+      const dayOrders = data.filter((o) => {
+        const orderDate = dayjs(o.createdAt instanceof Timestamp ? o.createdAt.toDate() : o.createdAt).tz(SL_TZ);
+        return orderDate.isSame(currentDate, "day");
+      });
 
       const stats = {
         date: dateStr,
@@ -324,7 +328,7 @@ export const getSalesPerformanceReport = async (
     const performanceMap: Record<string, any> = {};
 
     data.forEach((order) => {
-      const date = dayjs(order.createdAt.toDate());
+      const date = dayjs(order.createdAt.toDate()).tz(SL_TZ);
       let key: string;
 
       if (groupBy === "month") {
@@ -726,8 +730,8 @@ export const getSalesVsDiscount = async (
       (order.createdAt as any)?.toDate?.() || new Date(order.createdAt as any);
     const key =
       groupBy === "day"
-        ? date.toISOString().split("T")[0]
-        : `${date.getFullYear()}-${date.getMonth() + 1}`;
+        ? dayjs(date).tz(SL_TZ).format("YYYY-MM-DD")
+        : dayjs(date).tz(SL_TZ).format("YYYY-MM");
 
     const existing = groups.get(key) || { sales: 0, discount: 0 };
     existing.sales += order.total || 0;
@@ -821,7 +825,7 @@ export const getExpenseReport = async (from: string, to: string) => {
   const start = new Date(from);
   const end = new Date(to);
   const expenses = await reportRepository.findExpensesForReport({ start, end });
-  return expenses;
+  return formatListDates(expenses, ["date", "createdAt", "updatedAt"]);
 };
 
 /**

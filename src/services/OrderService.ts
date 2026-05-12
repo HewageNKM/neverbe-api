@@ -6,11 +6,8 @@ import {
   validateManyIntegrity,
 } from "./IntegrityService";
 import { AppError } from "@/utils/apiResponse";
-import { 
-  sendOrderStatusUpdateSMS, 
-  sendOrderStatusUpdateEmail 
-} from "./NotificationService";
-import { toSafeLocaleString } from "./UtilService";
+import { sendOrderStatusUpdateSMS, sendOrderStatusUpdateEmail } from "./NotificationService";
+import { toSafeLocaleString, formatListDates } from "./UtilService";
 
 /**
  * OrderService - Business logic for orders
@@ -58,14 +55,14 @@ export const getOrders = async (
       const id = (data as any).id;
       return {
         ...data,
-        userId: data.userId || null, 
+        userId: data.userId || null,
         orderId: id,
         integrity: integrityMap[id] ?? false,
         customer: data.customer ? { ...data.customer } : null,
       } as unknown as Order;
     });
 
-    return { dataList: ordersWithIntegrity, total };
+    return { dataList: formatListDates(ordersWithIntegrity), total };
   } catch (error: any) {
     console.error(error);
     throw error;
@@ -78,20 +75,12 @@ export const getOrder = async (orderId: string): Promise<Order> => {
 
   const integrity = await validateDocumentIntegrity("orders", orderId, data);
 
-  return {
+  return formatEntityDates({
     ...data,
-    orderId: orderId,
-    integrity: integrity,
-    customer: data.customer
-      ? {
-          ...data.customer,
-          updatedAt: data.customer.updatedAt ? toSafeLocaleString(data.customer.updatedAt) : null,
-        }
-      : null,
-    createdAt: toSafeLocaleString(data.createdAt),
-    updatedAt: toSafeLocaleString(data.updatedAt),
-    restockedAt: data.restockedAt ? toSafeLocaleString(data.restockedAt) : null,
-  };
+    orderId,
+    integrity,
+    customer: data.customer ? formatEntityDates(data.customer) : null,
+  } as any, ["createdAt", "updatedAt", "restockedAt"]);
 };
 
 export const updateOrder = async (order: Order & { sendNotification?: boolean }, orderId: string) => {

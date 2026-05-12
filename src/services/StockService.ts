@@ -2,6 +2,7 @@ import { stockRepository } from "@/repositories/FinanceRepositories";
 import { Stock } from "@/model/Stock";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatListDates } from "./UtilService";
 
 /**
  * StockService - Business logic for stock locations
@@ -20,16 +21,7 @@ export const getStocks = async (
     status
   });
 
-  const stocks = dataList.map((data) => ({
-    id: data.id,
-    name: data.name,
-    address: data.address,
-    status: data.status,
-    createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : undefined,
-    updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : undefined,
-  } as Stock));
-
-  return { dataList: stocks, rowCount: total };
+  return { dataList: formatListDates(dataList), rowCount: total };
 };
 
 export const addStock = async (

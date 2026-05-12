@@ -5,6 +5,7 @@ import {
   type CollectionReference,
   type DocumentSnapshot,
 } from "firebase-admin/firestore";
+import dayjs, { SL_TZ } from "../utils/dayjs";
 
 /**
  * Base Repository providing common Firestore operations
@@ -215,17 +216,24 @@ export abstract class BaseRepository<T> {
   }
 
   /**
-   * Serialize Firestore Timestamp to ISO string
+   * Serialize Firestore Timestamp to Sri Lanka Localized String
    */
   protected serializeTimestamp(val: any): string | null {
     if (!val) return null;
-    if (typeof val.toDate === "function") {
-      return val.toDate().toISOString();
+    try {
+      const date =
+        typeof val.toDate === "function"
+          ? val.toDate()
+          : val instanceof Date
+          ? val
+          : new Date(val);
+
+      if (isNaN(date.getTime())) return String(val);
+
+      return dayjs(date).tz(SL_TZ).format("DD/MM/YYYY, hh:mm:ss a");
+    } catch {
+      return String(val);
     }
-    if (val instanceof Date) {
-      return val.toISOString();
-    }
-    return val;
   }
 
   /**

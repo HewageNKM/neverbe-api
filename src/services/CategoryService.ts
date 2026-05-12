@@ -2,6 +2,7 @@ import { categoryRepository } from "@/repositories/CategoryRepository";
 import { Category } from "@/model/Category";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * CategoryService - Business logic for product categories
@@ -11,10 +12,11 @@ import { AppError } from "@/utils/apiResponse";
 // CREATE
 export const createCategory = async (category: Category) => {
   const id = `c-${nanoid(8)}`.toLowerCase();
-  return await categoryRepository.create(id, {
+  const savedCategory = await categoryRepository.create(id, {
     ...category,
     active: category.active ?? true,
   });
+  return formatEntityDates(savedCategory);
 };
 
 export const getCategories = async (options: {
@@ -25,7 +27,7 @@ export const getCategories = async (options: {
 }) => {
   const { dataList, total } = await categoryRepository.findPaginated(options);
   return {
-    dataList,
+    dataList: formatListDates(dataList),
     rowCount: total,
   };
 };
@@ -34,7 +36,7 @@ export const getCategories = async (options: {
 export const getCategoryById = async (id: string) => {
   const category = await categoryRepository.findById(id);
   if (!category) throw new AppError("Category not found", 404);
-  return category;
+  return formatEntityDates(category);
 };
 
 // UPDATE

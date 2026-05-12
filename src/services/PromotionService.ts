@@ -4,7 +4,7 @@ import { productRepository } from "@/repositories/ProductRepository";
 import { Promotion, ProductVariantTarget } from "@/model/Promotion";
 import { Coupon } from "@/model/Coupon";
 import { nanoid } from "nanoid";
-import { toSafeLocaleString } from "./UtilService";
+import { formatEntityDates, formatListDates } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
 
@@ -36,15 +36,7 @@ export const getPromotions = async (
     type
   });
 
-  const formatted = dataList.map((hit) => ({
-    ...hit,
-    startDate: toSafeLocaleString(hit.startDate) || "",
-    endDate: toSafeLocaleString(hit.endDate) || "",
-    createdAt: toSafeLocaleString(hit.createdAt) || "",
-    updatedAt: toSafeLocaleString(hit.updatedAt) || "",
-  })) as Promotion[];
-
-  return { dataList: formatted, rowCount: total };
+  return { dataList: formatListDates(dataList), rowCount: total };
 };
 
 export const createPromotion = async (
@@ -90,7 +82,7 @@ export const deletePromotion = async (id: string) => {
 export const getPromotionById = async (id: string) => {
   const promo = await promotionRepository.findById(id);
   if (!promo) throw new AppError("Promotion not found", 404);
-  return promo;
+  return formatEntityDates(promo);
 };
 
 // --- COUPONS CRUD ---
@@ -108,15 +100,7 @@ export const getCoupons = async (
     search
   });
 
-  const formatted = dataList.map((hit) => ({
-    ...hit,
-    startDate: toSafeLocaleString(hit.startDate),
-    endDate: toSafeLocaleString(hit.endDate),
-    createdAt: toSafeLocaleString(hit.createdAt),
-    updatedAt: toSafeLocaleString(hit.updatedAt),
-  })) as Coupon[];
-
-  return { dataList: formatted, rowCount: total };
+  return { dataList: formatListDates(dataList), rowCount: total };
 };
 
 export const createCoupon = async (

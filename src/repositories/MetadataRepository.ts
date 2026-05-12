@@ -1,4 +1,5 @@
 import { BaseRepository } from "./BaseRepository";
+import dayjs from "../utils/dayjs";
 
 /**
  * Metadata Repository - handles synchronization and system metadata
@@ -21,7 +22,7 @@ export class MetadataRepository extends BaseRepository<any> {
   async updateSyncMetadata(key: string, data: any): Promise<void> {
     await this.update(key, {
       ...data,
-      updatedAt: new Date().toISOString(),
+      updatedAt: dayjs().toISOString(),
     } as any);
   }
 }

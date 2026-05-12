@@ -2,6 +2,7 @@ import { orderRepository } from "@/repositories/OrderRepository";
 import { pettyCashRepository, paymentRecordRepository } from "@/repositories/FinanceRepositories";
 import { getBankAccounts } from "./BankAccountService";
 import { getInvoiceAgingSummary } from "./SupplierInvoiceService";
+import { formatToSLDate } from "./UtilService";
 
 /**
  * FinanceDashboardService - Business logic for financial analytics
@@ -44,7 +45,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
   ordersData.forEach((data: any) => {
     if (data.paymentStatus?.toUpperCase() === "PAID") {
       const amount = Number(data.total) || 0;
-      const date = new Date((data.createdAt as any).toDate?.() || data.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const date = formatToSLDate(data.createdAt);
       if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
       monthlyIncome += amount;
       cashFlowMap[date].income += amount;
@@ -54,7 +55,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
   // Process Petty Cash / Expenses
   pettyCashData.forEach((data) => {
     const amount = Number(data.amount) || 0;
-    const date = new Date((data.date as any).toDate?.() || data.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const date = formatToSLDate(data.date);
     if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
 
     if (data.type === "expense") {
@@ -71,7 +72,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
   // Process Payment Records (Supplier Payments)
   paymentRecordsData.forEach((data) => {
     const amount = Number(data.amount) || 0;
-    const date = new Date((data.date as any).toDate?.() || data.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const date = formatToSLDate(data.date);
     if (!cashFlowMap[date]) cashFlowMap[date] = { income: 0, expense: 0 };
     monthlyExpenses += amount;
     const cat = data.category || "Supplier Payment";
@@ -97,7 +98,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
       id: data.id,
       ...data,
       dateObj: (data.date as any).toDate?.() || new Date(data.date),
-      date: new Date((data.date as any).toDate?.() || data.date).toLocaleDateString(),
+      date: formatToSLDate(data.date, "DD/MM/YYYY"),
       category: data.category,
       amount: Number(data.amount),
       type: data.type,
@@ -107,7 +108,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
       id: data.id,
       ...data,
       dateObj: (data.date as any).toDate?.() || new Date(data.date),
-      date: new Date((data.date as any).toDate?.() || data.date).toLocaleDateString(),
+      date: formatToSLDate(data.date, "DD/MM/YYYY"),
       category: data.category,
       amount: Number(data.amount),
       type: "expense",

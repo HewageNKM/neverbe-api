@@ -1,5 +1,8 @@
 import { reviewRepository } from "@/repositories/ReviewRepository";
 import { Review } from "@/interfaces/Review";
+import { formatListDates } from "./UtilService";
+import { metadataRepository } from "@/repositories/MetadataRepository";
+import { googleReviewSyncService } from "./GoogleReviewSyncService";
 
 /**
  * ReviewService - Business logic for product reviews
@@ -10,7 +13,8 @@ export const getWebReviews = async (
   itemId?: string,
   source?: string,
 ) => {
-  return reviewRepository.getLatestWebReviews(limit, itemId, source);
+  const reviews = await reviewRepository.getLatestWebReviews(limit, itemId, source);
+  return formatListDates(reviews);
 };
 
 export const createReview = async (uid: string, userName: string, data: Partial<Review>) => {
@@ -22,7 +26,8 @@ export const createReview = async (uid: string, userName: string, data: Partial<
 };
 
 export const getUserReviews = async (uid: string) => {
-  return reviewRepository.getReviewsByUserId(uid);
+  const reviews = await reviewRepository.getReviewsByUserId(uid);
+  return formatListDates(reviews);
 };
 
 export const updateReview = async (uid: string, reviewId: string, data: any) => {
@@ -43,29 +48,26 @@ export const deleteReview = async (uid: string, reviewId: string) => {
   return reviewRepository.deleteReview(reviewId);
 };
 
-import { metadataRepository } from "@/repositories/MetadataRepository";
-import { googleReviewSyncService } from "./GoogleReviewSyncService";
-
 export const triggerBackgroundSync = async () => {
   try {
     const key = "google_reviews";
     const metadata = await metadataRepository.getSyncMetadata(key);
-    
+
     const lastSyncAt = metadata?.lastSyncAt ? new Date(metadata.lastSyncAt) : new Date(0);
     const now = new Date();
-    
+
     // Sync if more than 24 hours ago
     const hoursSinceSync = (now.getTime() - lastSyncAt.getTime()) / (1000 * 60 * 60);
-    
+
     if (hoursSinceSync >= 24) {
       console.log(`[Background Sync] Last sync was ${hoursSinceSync.toFixed(2)} hours ago. Triggering sync...`);
-      
+
       // Update metadata first to prevent concurrent triggers
       await metadataRepository.updateSyncMetadata(key, { isSyncing: true, lastSyncAt: now.toISOString() });
-      
+
       const placeId = "ChIJ2TyZoff_4joRgDt7is46uRk";
       const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-      
+
       if (apiKey) {
         // We don't await this if we want it truly background, but for simple cloud functions,
         // it's safer to await it here if we call this from an API route.

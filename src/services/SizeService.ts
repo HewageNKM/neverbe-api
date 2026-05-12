@@ -1,6 +1,7 @@
 import { sizeRepository } from "@/repositories/SizeRepository";
 import { Size } from "@/model/Size";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 import { nanoid } from "nanoid";
 
 /**
@@ -15,15 +16,16 @@ export const getSizes = async (options: {
   status?: "active" | "inactive" | null;
 }) => {
   const { dataList, total } = await sizeRepository.findPaginated(options);
-  return { dataList, rowCount: total };
+  return { dataList: formatListDates(dataList), rowCount: total };
 };
 
 export const createSize = async (data: Size) => {
   const id = `sz-${nanoid(8)}`;
-  return await sizeRepository.create(id, {
+  const savedSize = await sizeRepository.create(id, {
     ...data,
     nameLower: data.name.toLowerCase(),
   });
+  return formatEntityDates(savedSize);
 };
 
 export const updateSize = async (id: string, data: Partial<Size>) => {

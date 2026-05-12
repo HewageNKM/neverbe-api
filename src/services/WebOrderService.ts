@@ -14,6 +14,7 @@ import { updateOrAddOrderHash } from "./IntegrityService";
 import { Order } from "@/model/Order";
 import { Product } from "@/model/Product";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 import {
   validateCoupon,
   trackCouponUsage,
@@ -29,7 +30,7 @@ import { ShippingRule } from "@/model/ShippingRule";
 export const getOrderByIdForInvoice = async (orderId: string) => {
   const order = await orderRepository.findByOrderId(orderId);
   if (!order) throw new Error(`Order ${orderId} not found.`);
-  return order;
+  return formatEntityDates(order);
 };
 
 export const updatePayment = async (
@@ -206,5 +207,6 @@ export const addWebOrder = async (order: Partial<Order>) => {
 };
 
 export const getOrdersByUserId = async (userId: string, limit: number = 50) => {
-  return await orderRepository.findByUserId(userId, limit);
+  const orders = await orderRepository.findByUserId(userId, limit);
+  return formatListDates(orders);
 };

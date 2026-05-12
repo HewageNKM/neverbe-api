@@ -1,7 +1,8 @@
 import { BaseRepository } from "./BaseRepository";
 import { FieldValue } from "firebase-admin/firestore";
 import type { Order } from "@/interfaces";
-import { formatInTimeZone } from "date-fns-tz";
+import dayjs, { SL_TZ } from "../utils/dayjs";
+import { parseToDayjs, toSafeLocaleString } from "../services/UtilService";
 
 /**
  * Order Repository - handles order data access
@@ -15,27 +16,7 @@ export class OrderRepository extends BaseRepository<Order> {
    * Format timestamp to locale string
    */
   private toLocaleString(val: any): string | null {
-    if (!val) return null;
-    try {
-      // Handle Firestore Timestamps and various other date formats
-      let date: Date;
-      if (typeof val.toDate === "function") {
-        date = val.toDate();
-      } else if (val instanceof Date) {
-        date = val;
-      } else if (val && typeof val === "object" && "_seconds" in val) {
-        // Handle raw Firestore timestamp objects if they aren't converted to admin.Timestamp instances
-        date = new Date(val._seconds * 1000);
-      } else {
-        date = new Date(val);
-      }
-
-      if (isNaN(date.getTime())) return null;
-      return formatInTimeZone(date, "Asia/Colombo", "dd/MM/yyyy, hh:mm:ss a");
-    } catch (e) {
-      console.error("[OrderRepository] timestamp conversion error:", e);
-      return null;
-    }
+    return toSafeLocaleString(val);
   }
 
   /**
@@ -52,14 +33,7 @@ export class OrderRepository extends BaseRepository<Order> {
     const order = snapshot.docs[0].data() as Order;
 
     // Safely get date for expiry check
-    let createdAtDate: Date;
-    if (order.createdAt && typeof (order.createdAt as any).toDate === "function") {
-      createdAtDate = (order.createdAt as any).toDate();
-    } else if (order.createdAt && (order.createdAt as any)._seconds) {
-      createdAtDate = new Date((order.createdAt as any)._seconds * 1000);
-    } else {
-      createdAtDate = new Date();
-    }
+    const createdAtDate = parseToDayjs(order.createdAt)?.toDate() || new Date();
 
     const diffDays =
       (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24);

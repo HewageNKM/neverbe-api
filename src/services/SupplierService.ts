@@ -2,6 +2,7 @@ import { supplierRepository } from "@/repositories/SupplierRepository";
 import { Supplier } from "@/model/Supplier";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * SupplierService - Business logic for product suppliers
@@ -29,7 +30,7 @@ export const getSuppliers = async (
     );
   }
 
-  return suppliers;
+  return formatListDates(suppliers);
 };
 
 /**
@@ -38,7 +39,7 @@ export const getSuppliers = async (
 export const getSupplierById = async (id: string): Promise<Supplier> => {
   const supplier = await supplierRepository.findById(id);
   if (!supplier) throw new AppError("Supplier not found", 404);
-  return supplier;
+  return formatEntityDates(supplier);
 };
 
 /**

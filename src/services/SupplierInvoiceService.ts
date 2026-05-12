@@ -6,6 +6,7 @@ import { updateBankAccountBalance } from "./BankAccountService";
 import { Timestamp } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { toSafeLocaleString, formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * SupplierInvoiceService - Business logic for supplier invoices
@@ -33,13 +34,15 @@ export const getSupplierInvoices = async (filters?: {
     });
   }
 
-  return docs;
+  return formatListDates(docs, ["issueDate", "dueDate", "createdAt", "updatedAt"]);
 };
 
 export const getSupplierInvoiceById = async (id: string): Promise<SupplierInvoice> => {
   const doc = await supplierInvoiceRepository.findById(id);
   if (!doc) throw new AppError(`Supplier Invoice with ID ${id} not found`, 404);
-  return doc;
+  return formatEntityDates({
+    ...doc,
+  } as any, ["issueDate", "dueDate", "createdAt", "updatedAt"]);
 };
 
 export const createSupplierInvoice = async (

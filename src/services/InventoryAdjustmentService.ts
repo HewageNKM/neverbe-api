@@ -9,6 +9,7 @@ import {
 } from "@/model/InventoryAdjustment";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
+import { formatEntityDates, formatListDates, getNowSL } from "./UtilService";
 
 /**
  * InventoryAdjustmentService - Business logic for stock adjustments
@@ -16,8 +17,8 @@ import { nanoid } from "nanoid";
  */
 
 const generateAdjustmentNumber = async (): Promise<string> => {
-  const today = new Date();
-  const prefix = `ADJ-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const now = getNowSL();
+  const prefix = `ADJ-${now.format("YYYYMM")}`;
 
   const lastNumber = await inventoryAdjustmentRepository.findLastAdjustmentNumber(prefix);
 
@@ -59,7 +60,7 @@ export const getAdjustments = async (
     }
   }
 
-  return { dataList: adjustments, rowCount: total };
+  return { dataList: formatListDates(adjustments), rowCount: total };
 };
 
 export const getAdjustmentById = async (id: string): Promise<InventoryAdjustment & { adjustedByName?: string }> => {
@@ -76,7 +77,7 @@ export const getAdjustmentById = async (id: string): Promise<InventoryAdjustment
     }
   }
 
-  return { ...data, adjustedByName };
+  return formatEntityDates({ ...data, adjustedByName });
 };
 
 export const createAdjustment = async (
@@ -98,7 +99,7 @@ export const createAdjustment = async (
     await updateInventoryFromAdjustment(adjustment.items, adjustment.type);
   }
 
-  return saved;
+  return formatEntityDates(saved);
 };
 
 export const updateAdjustmentStatus = async (

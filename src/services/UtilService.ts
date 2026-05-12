@@ -1,16 +1,13 @@
 import { Timestamp } from "firebase-admin/firestore";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
-import timezone from "dayjs/plugin/timezone";
+import dayjs, { SL_TZ } from "../utils/dayjs";
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
+/**
+ * Safe conversion of various date types to Sri Lanka localized string
+ */
 export const toSafeLocaleString = (val: any) => {
   if (!val) return null;
 
   try {
-    // Convert Firestore Timestamp → JS Date
     const date =
       val instanceof Timestamp
         ? val.toDate()
@@ -20,15 +17,84 @@ export const toSafeLocaleString = (val: any) => {
 
     if (isNaN(date.getTime())) return String(val);
 
-    const timeZone = "Asia/Colombo";
-    // date-fns format: "dd/MM/yyyy, hh:mm:ss a" 
-    // dayjs format equivalent: "DD/MM/YYYY, hh:mm:ss a"
-    // Note: dayjs 'hh' is 12-hour, 'a' is am/pm. 'DD' is day, 'MM' is month. 
-    const formatStr = "DD/MM/YYYY, hh:mm:ss a"; 
-
-    return dayjs(date).tz(timeZone).format(formatStr);
+    const formatStr = "DD/MM/YYYY, hh:mm:ss a";
+    return dayjs(date).tz(SL_TZ).format(formatStr);
   } catch {
     return String(val);
   }
 };
 
+/**
+ * Get current time in Sri Lanka
+ */
+export const getNowSL = () => dayjs().tz(SL_TZ);
+
+/**
+ * Format to Sri Lanka Time (Full)
+ */
+export const formatToSLTime = (val: any, formatStr: string = "DD/MM/YYYY, hh:mm:ss a") => {
+  const d = parseToDayjs(val);
+  return d ? d.tz(SL_TZ).format(formatStr) : "";
+};
+
+/**
+ * Format to Sri Lanka Date (Short)
+ */
+export const formatToSLDate = (val: any, formatStr: string = "MMM DD") => {
+  const d = parseToDayjs(val);
+  return d ? d.tz(SL_TZ).format(formatStr) : "";
+};
+
+/**
+ * Centralized Date Formatter for Entities
+ * Automatically formats specified keys (defaults to createdAt, updatedAt)
+ */
+export const formatEntityDates = <T extends object>(
+  entity: T,
+  dateKeys: (keyof T)[] = ["createdAt" as keyof T, "updatedAt" as keyof T]
+): T => {
+  if (!entity) return entity;
+  const result = { ...entity };
+  dateKeys.forEach((key) => {
+    if (result[key]) {
+      (result as any)[key] = toSafeLocaleString(result[key]);
+    }
+  });
+  return result;
+};
+
+/**
+ * Centralized Date Formatter for Lists
+ */
+export const formatListDates = <T extends object>(
+  list: T[],
+  dateKeys: (keyof T)[] = ["createdAt" as keyof T, "updatedAt" as keyof T]
+): T[] => {
+  if (!Array.isArray(list)) return list;
+  return list.map((item) => formatEntityDates(item, dateKeys));
+};
+
+/**
+ * Robust Date Parser for Sri Lanka Time
+ * Handles Timestamps, ISO strings, and custom formats
+ */
+export const parseToDayjs = (val: any) => {
+  if (!val) return null;
+  if (val instanceof Timestamp) return dayjs(val.toDate());
+  if (typeof val.toDate === "function") return dayjs(val.toDate());
+
+  if (typeof val === "string") {
+    const formats = [
+      "DD/MM/YYYY, hh:mm:ss a",
+      "DD/MM/YYYY, h:mm:ss a",
+      "DD/MM/YYYY",
+      "YYYY-MM-DD",
+    ];
+    for (const f of formats) {
+      const p = dayjs(val, f, true);
+      if (p.isValid()) return p;
+    }
+    return dayjs(val); // Fallback to auto
+  }
+  return dayjs(val);
+};

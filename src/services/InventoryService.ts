@@ -4,6 +4,7 @@ import { stockRepository } from "@/repositories/FinanceRepositories";
 import { InventoryItem } from "@/model/InventoryItem";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * InventoryService - Business logic for stock management
@@ -56,7 +57,7 @@ export const getInventory = async (
     };
   });
 
-  return { dataList: inventoryItems, rowCount: total };
+  return { dataList: formatListDates(inventoryItems), rowCount: total };
 };
 
 export const findExistingInventoryItem = async (

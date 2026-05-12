@@ -6,6 +6,7 @@ import {
 } from "@/model/PurchaseOrder";
 import { AppError } from "@/utils/apiResponse";
 import { nanoid } from "nanoid";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * PurchaseOrderService - Business logic for purchase orders
@@ -32,13 +33,13 @@ export const getPurchaseOrders = async (
   supplierId?: string,
 ): Promise<PurchaseOrder[]> => {
   const { dataList } = await purchaseOrderRepository.findPaginated({ status, supplierId, size: 1000 });
-  return dataList;
+  return formatListDates(dataList);
 };
 
 export const getPurchaseOrderById = async (id: string): Promise<PurchaseOrder> => {
   const po = await purchaseOrderRepository.findById(id);
   if (!po) throw new AppError(`Purchase Order with ID ${id} not found`, 404);
-  return po;
+  return formatEntityDates(po);
 };
 
 export const createPurchaseOrder = async (
@@ -111,5 +112,5 @@ export const deletePurchaseOrder = async (id: string): Promise<void> => {
 };
 
 export const getPendingPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-  return await purchaseOrderRepository.findPending();
+  return formatListDates(await purchaseOrderRepository.findPending());
 };

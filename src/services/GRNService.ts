@@ -8,6 +8,7 @@ import {
   updateReceivedQuantities,
 } from "./PurchaseOrderService";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * GRNService - Business logic for Good Received Notes
@@ -34,13 +35,13 @@ export const getGRNs = async (
   status?: GRNStatus,
 ): Promise<GRN[]> => {
   const { dataList } = await grnRepository.findPaginated({ purchaseOrderId, status, size: 1000 });
-  return dataList;
+  return formatListDates(dataList);
 };
 
 export const getGRNById = async (id: string): Promise<GRN> => {
   const grn = await grnRepository.findById(id);
   if (!grn) throw new AppError(`GRN with ID ${id} not found`, 404);
-  return grn;
+  return formatEntityDates(grn);
 };
 
 export const createGRN = async (
@@ -123,5 +124,5 @@ const processGRNApproval = async (id: string): Promise<void> => {
 
 export const getGRNsBySupplierId = async (supplierId: string): Promise<GRN[]> => {
   const { dataList } = await grnRepository.findPaginated({ supplierId, size: 1000 });
-  return dataList;
+  return formatListDates(dataList);
 };

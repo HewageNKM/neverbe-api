@@ -6,8 +6,9 @@ import { inventoryRepository } from "@/repositories/InventoryRepository";
 import { productRepository } from "@/repositories/ProductRepository";
 import { orderRepository } from "@/repositories/OrderRepository";
 import { posCartRepository } from "@/repositories/PosCartRepository";
-import { stockRepository, pettyCashRepository } from "@/repositories/FinanceRepositories";
+import { pettyCashRepository, stockRepository } from "@/repositories/FinanceRepositories";
 import { settingsRepository } from "@/repositories/SettingsRepository";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 // ================================
 // 🔹 DATA TYPES
@@ -242,7 +243,7 @@ export const createPOSOrder = async (order: Partial<Order>, userId: string) => {
     const savedOrder = await orderRepository.findById(order.orderId);
     if (savedOrder) await updateOrAddOrderHash(savedOrder);
 
-    return { ...orderData, createdAt: new Date().toISOString() };
+    return formatEntityDates(orderData);
   } catch (error) {
     console.error("Error creating POS order:", error);
     throw error;
@@ -273,5 +274,5 @@ export const getPaymentMethods = async () => {
 export const getOrderByOrderId = async (orderId: string) => {
   const order = await orderRepository.findByOrderId(orderId);
   if (!order) throw new AppError(`Order with Order ID ${orderId} not found`, 404);
-  return order;
+  return formatEntityDates(order);
 };

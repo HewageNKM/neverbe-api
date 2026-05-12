@@ -1,6 +1,7 @@
 import { userRepository } from "@/repositories/UserRepository";
 import { User } from "@/model/User";
 import { adminAuth } from "@/firebase/firebaseAdmin";
+import { toSafeLocaleString, formatListDates } from "./UtilService";
 
 /**
  * User Service - handles business logic for users
@@ -40,7 +41,7 @@ export const getUsers = async (params: {
     } as User));
 
   // 3. Combine and apply search filter
-  let allUsers = [...firestoreUsers, ...pendingUsersFromAuth];
+  let allUsers = formatListDates([...firestoreUsers, ...pendingUsersFromAuth]);
 
   if (search?.trim()) {
     const searchLower = search.toLowerCase();

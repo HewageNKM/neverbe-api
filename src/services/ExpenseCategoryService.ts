@@ -2,6 +2,7 @@ import { expenseCategoryRepository } from "@/repositories/ExpenseCategoryReposit
 import { ExpenseCategory } from "@/model/ExpenseCategory";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * ExpenseCategoryService - Business logic for expense categories
@@ -16,7 +17,7 @@ export const getExpenseCategoryById = async (
 ): Promise<ExpenseCategory> => {
   const category = await expenseCategoryRepository.findById(id);
   if (!category) throw new AppError(`Expense Category with ID ${id} not found`, 404);
-  return category;
+  return formatEntityDates(category);
 };
 
 /**
@@ -35,7 +36,7 @@ export const createExpenseCategory = async (
 export const getExpenseCategories = async (
   type?: "expense" | "income"
 ): Promise<ExpenseCategory[]> => {
-  return await expenseCategoryRepository.findByType(type);
+  return formatListDates(await expenseCategoryRepository.findByType(type));
 };
 
 /**

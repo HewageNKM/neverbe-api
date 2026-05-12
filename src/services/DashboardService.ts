@@ -3,6 +3,8 @@ import { orderRepository } from "@/repositories/OrderRepository";
 import { Order } from "@/model/Order";
 import { PopularItem } from "@/model/PopularItem";
 import { reportRepository } from "@/repositories/ReportRepository";
+import { toSafeLocaleString, getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 // ============================================================
 // Interfaces
@@ -187,9 +189,9 @@ export const getOverviewByDateRange = async (
  * Get daily snapshot for the dashboard (today's data)
  */
 export const getDailySnapshot = async (): Promise<DashboardOverview> => {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const now = getNowSL();
+  const startOfDay = now.startOf("day").toDate();
+  const endOfDay = now.endOf("day").toDate();
   return getOverviewByDateRange(startOfDay, endOfDay);
 };
 
@@ -223,9 +225,9 @@ export const getInventoryValue = async (): Promise<InventoryValue> => {
  * Get high-level profit margins
  */
 export const getProfitMargins = async (): Promise<ProfitMargins> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const now = getNowSL();
+  const startOfMonth = now.startOf("month").toDate();
+  const endOfMonth = now.endOf("month").toDate();
 
   const overview = await getOverviewByDateRange(startOfMonth, endOfMonth);
 
@@ -248,9 +250,9 @@ export const getProfitMargins = async (): Promise<ProfitMargins> => {
  * Get revenue distribution by category
  */
 export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const now = getNowSL();
+  const startOfMonth = now.startOf("month").toDate();
+  const endOfMonth = now.endOf("month").toDate();
 
   const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth);
   const categoryMap = new Map<string, number>();
@@ -274,9 +276,9 @@ export const getRevenueByCategory = async (): Promise<CategoryRevenue[]> => {
  * Get monthly expense summary
  */
 export const getExpenseSummary = async (): Promise<ExpenseSummary[]> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const now = getNowSL();
+  const startOfMonth = now.startOf("month").toDate();
+  const endOfMonth = now.endOf("month").toDate();
 
   const expenses = await reportRepository.findExpensesForReport({
     start: startOfMonth,
@@ -304,9 +306,10 @@ export const getExpenseSummary = async (): Promise<ExpenseSummary[]> => {
  * Get yearly sales performance for chart
  */
 export const getYearlySalesPerformance = async (year?: number): Promise<YearlySalesPerformance> => {
-  const currentYear = year || new Date().getFullYear();
-  const startOfYear = new Date(currentYear, 0, 1, 0, 0, 0, 0);
-  const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999);
+  const now = getNowSL();
+  const currentYear = year || now.year();
+  const startOfYear = dayjs().year(currentYear).startOf("year").toDate();
+  const endOfYear = dayjs().year(currentYear).endOf("year").toDate();
 
   const orders = await orderRepository.findByStatusInDateRange(startOfYear, endOfYear);
 
@@ -314,9 +317,9 @@ export const getYearlySalesPerformance = async (year?: number): Promise<YearlySa
   const storeOrders = new Array(12).fill(0);
 
   orders.forEach((order) => {
-    const createdAt = (order.createdAt as any)?.toDate?.() || new Date(order.createdAt as any);
+    const createdAt = parseToDayjs(order.createdAt);
     if (createdAt) {
-      const monthIndex = createdAt.getMonth();
+      const monthIndex = createdAt.month();
       const source = order.from?.toString().toLowerCase();
       if (source === "store") {
         storeOrders[monthIndex]++;
@@ -345,7 +348,7 @@ export const getRecentOrders = async (limitCount: number = 6): Promise<RecentOrd
       grossAmount,
       discountAmount,
       netAmount,
-      createdAt: (data.createdAt as any)?.toDate?.()?.toLocaleString() || String(data.createdAt),
+      createdAt: toSafeLocaleString(data.createdAt) || String(data.createdAt),
     };
   });
 };
@@ -355,10 +358,8 @@ export const getPopularItems = async (
   month: number,
   year: number,
 ): Promise<PopularItem[]> => {
-  const startDay = new Date(year, month, 1);
-  startDay.setHours(0, 0, 0, 0);
-  const endDay = new Date(year, month + 1, 0);
-  endDay.setHours(23, 59, 59, 999);
+  const startDay = dayjs().year(year).month(month).startOf("month").toDate();
+  const endDay = dayjs().year(year).month(month).endOf("month").toDate();
 
   const orders = await orderRepository.findPaidOrdersInDateRange(startDay, endDay);
 
@@ -389,11 +390,11 @@ export const getLowStockAlerts = async (threshold: number = 5, limit: number = 1
 };
 
 export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
-  const now = new Date();
-  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  const now = getNowSL();
+  const currentMonthStart = now.startOf("month").toDate();
+  const currentMonthEnd = now.endOf("month").toDate();
+  const lastMonthStart = now.subtract(1, "month").startOf("month").toDate();
+  const lastMonthEnd = now.subtract(1, "month").endOf("month").toDate();
 
   const [currentData, lastData] = await Promise.all([
     getOverviewByDateRange(currentMonthStart, currentMonthEnd),
@@ -417,9 +418,9 @@ export const getMonthlyComparison = async (): Promise<MonthlyComparison> => {
 };
 
 export const getOrderStatusDistribution = async (): Promise<OrderStatusDistribution> => {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const now = getNowSL();
+  const startOfMonth = now.startOf("month").toDate();
+  const endOfMonth = now.endOf("month").toDate();
 
   const orders = await orderRepository.findByStatusInDateRange(startOfMonth, endOfMonth, ["Paid", "PAID", "Pending", "Processing", "Completed", "Cancelled"]);
 
@@ -452,14 +453,13 @@ export const getWeeklyTrends = async (): Promise<WeeklyTrends> => {
 
   const days = Array.from({ length: 7 }, (_, i) => 6 - i);
   const trends = await Promise.all(days.map(async (i) => {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    const start = new Date(date.setHours(0, 0, 0, 0));
-    const end = new Date(date.setHours(23, 59, 59, 999));
+    const date = getNowSL().subtract(i, "day");
+    const start = date.startOf("day").toDate();
+    const end = date.endOf("day").toDate();
 
     const dayOrders = await orderRepository.findPaidOrdersInDateRange(start, end);
     return {
-      label: date.toLocaleDateString("en-US", { weekday: "short" }),
+      label: date.format("ddd"),
       orderCount: dayOrders.length,
       revenueSum: dayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
     };

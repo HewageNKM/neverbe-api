@@ -3,6 +3,7 @@ import { Brand } from "@/model/Brand";
 import { nanoid } from "nanoid";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * BrandService - Business logic for product brands
@@ -21,13 +22,15 @@ export const createBrand = async (brand: Partial<Brand>, logo?: File) => {
     );
   }
 
-  return await brandRepository.create(id, {
+  const savedBrand = await brandRepository.create(id, {
     ...brand,
     name: brand.name!,
     description: brand.description || "",
     status: brand.status ?? true,
     logoUrl,
   } as Brand);
+
+  return formatEntityDates(savedBrand);
 };
 
 export const getBrands = async (options: {
@@ -38,7 +41,7 @@ export const getBrands = async (options: {
 }) => {
   const { dataList, total } = await brandRepository.findPaginated(options);
   return {
-    dataList,
+    dataList: formatListDates(dataList),
     rowCount: total,
   };
 };
@@ -47,7 +50,7 @@ export const getBrands = async (options: {
 export const getBrandById = async (id: string) => {
   const brand = await brandRepository.findById(id);
   if (!brand) throw new AppError("Brand not found", 404);
-  return { success: true, data: brand };
+  return { success: true, data: formatEntityDates(brand) };
 };
 
 // 🔹 Update

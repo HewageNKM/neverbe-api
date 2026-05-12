@@ -7,6 +7,7 @@ import { categoryRepository } from "@/repositories/CategoryRepository";
 // paymentMethodRepository import removed as it's now part of settingsRepository
 import { Product } from "@/interfaces/Product";
 import { ProductVariant } from "@/interfaces/ProductVariant";
+import { formatEntityDates, formatListDates } from "./UtilService";
 
 /**
  * WebProductService - Thin wrapper over ProductRepository for the Website
@@ -40,11 +41,11 @@ const enrichProductsWithLabels = async (
     const isNewArrival = createdAtDate && createdAtDate >= ninetyDaysAgo;
     const isRestockingSoon = !product.inStock && approvedPOProductIds.has(product.id || product.productId);
 
-    return {
+    return formatEntityDates({
       ...product,
       isNewArrival: !!isNewArrival,
       isRestockingSoon: !!isRestockingSoon,
-    };
+    });
   });
 };
 
@@ -146,7 +147,7 @@ export const getProductsForSitemap = async () => {
   const baseUrl = process.env.WEB_BASE_URL;
   return products.map((p) => ({
     url: `${baseUrl}/collections/products/${p.id}`,
-    lastModified: new Date(),
+    lastModified: formatEntityDates({ date: new Date() }).date,
     priority: 0.7,
   }));
 };

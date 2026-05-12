@@ -2,7 +2,7 @@ import { adminStorageBucket } from "@/firebase/firebaseAdmin";
 import { comboRepository } from "@/repositories/ComboRepository";
 import { ComboProduct } from "@/model/ComboProduct";
 import { nanoid } from "nanoid";
-import { toSafeLocaleString } from "./UtilService";
+import { formatEntityDates, formatListDates } from "./UtilService";
 import { AppError } from "@/utils/apiResponse";
 import { uploadCompressedImage } from "./StorageService";
 
@@ -32,15 +32,7 @@ export const getCombos = async (
     size
   });
 
-  const formattedList = dataList.map((data) => ({
-    ...data,
-    createdAt: toSafeLocaleString(data.createdAt) || "",
-    updatedAt: toSafeLocaleString(data.updatedAt) || "",
-    startDate: toSafeLocaleString(data.startDate) || "",
-    endDate: toSafeLocaleString(data.endDate) || "",
-  }));
-
-  return { dataList: formattedList, rowCount };
+  return { dataList: formatListDates(dataList), rowCount };
 };
 
 export const createCombo = async (
@@ -103,12 +95,8 @@ export const getComboById = async (id: string): Promise<ComboProduct> => {
   const data = await comboRepository.findById(id);
   if (!data) throw new AppError("Combo not found", 404);
 
-  return {
+  return formatEntityDates({
     ...data,
     id,
-    createdAt: toSafeLocaleString(data.createdAt) || "",
-    updatedAt: toSafeLocaleString(data.updatedAt) || "",
-    startDate: toSafeLocaleString(data.startDate) || "",
-    endDate: toSafeLocaleString(data.endDate) || "",
-  } as ComboProduct;
+  });
 };

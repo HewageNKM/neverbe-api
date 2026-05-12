@@ -94,8 +94,8 @@ export const loginUser = async (userId: string) => {
       role: role || "",
       status: !authUser.disabled,
       permissions,
-      createdAt: authUser.metadata.creationTime || "",
-      updatedAt: authUser.metadata.lastSignInTime || "",
+      createdAt: toSafeLocaleString(authUser.metadata.creationTime) || "",
+      updatedAt: toSafeLocaleString(authUser.metadata.lastSignInTime) || "",
     };
 
     console.log(`[AuthService] Login logic completed successfully for ${userData.email}`);
