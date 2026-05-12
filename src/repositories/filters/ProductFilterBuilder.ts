@@ -19,7 +19,7 @@ export class ProductFilterBuilder {
    * Apply all optimized DB filters
    */
   applyOptimizedFilters(): ProductFilterBuilder {
-    const { tags = [], gender, inStock, category, brand, orderBy, orderDirection } =
+    const { tags = [], gender, occasion, style, inStock, category, brand, orderBy, orderDirection } =
       this.options;
 
     // 1. Unified Search Tags (Case-Insensitive)
@@ -28,6 +28,8 @@ export class ProductFilterBuilder {
     if (category) searchTags.push(category.toLowerCase());
     if (brand) searchTags.push(brand.toLowerCase());
     if (gender) searchTags.push(gender.toLowerCase());
+    if (occasion) searchTags.push(occasion.toLowerCase());
+    if (style) searchTags.push(style.toLowerCase());
 
     // Firestore allows only ONE array-contains/any clause.
     if (searchTags.length > 0) {
@@ -65,11 +67,12 @@ export class ProductFilterBuilder {
    * Check if post-fetching filtering is required for Gender
    */
   needsGenderPostFilter(): boolean {
-    const { tags, gender, category, brand } = this.options;
-    // If we have gender AND any other tag-based filter, we need post-filtering
+    const { tags, gender, category, brand, occasion, style } = this.options;
+    // If we have any specific categorization tag AND any other tag-based filter, we need post-filtering
     // because Firestore only allows one array-contains-any and we merged them (OR logic).
     const hasOtherTags = (tags && tags.length > 0) || !!category || !!brand;
-    return !!(gender && hasOtherTags);
+    const hasSpecificTags = !!gender || !!occasion || !!style;
+    return !!(hasSpecificTags && hasOtherTags);
   }
 
   /**

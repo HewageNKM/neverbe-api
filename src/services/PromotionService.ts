@@ -36,7 +36,7 @@ export const getPromotions = async (
     type
   });
 
-  return { dataList: formatListDates(dataList), rowCount: total };
+  return { dataList: formatListDates(dataList, ["startDate", "endDate", "createdAt", "updatedAt"]), rowCount: total };
 };
 
 export const createPromotion = async (
@@ -47,13 +47,14 @@ export const createPromotion = async (
   let bannerUrl = data.bannerUrl;
   if (file) bannerUrl = await uploadBanner(file, docId);
 
-  return await promotionRepository.create({
+  const created = await promotionRepository.create({
     ...data,
     bannerUrl,
     startDate: data.startDate ? new Date(data.startDate as any) : null,
     endDate: data.endDate ? new Date(data.endDate as any) : null,
     usageCount: 0,
   });
+  return formatEntityDates(created, ["startDate", "endDate", "createdAt", "updatedAt"]);
 };
 
 export const updatePromotion = async (
@@ -69,7 +70,8 @@ export const updatePromotion = async (
   if (data.startDate) payload.startDate = new Date(data.startDate as any);
   if (data.endDate) payload.endDate = new Date(data.endDate as any);
 
-  return await promotionRepository.update(id, payload);
+  const updated = await promotionRepository.update(id, payload);
+  return formatEntityDates(updated, ["startDate", "endDate", "createdAt", "updatedAt"]);
 };
 
 export const deletePromotion = async (id: string) => {
@@ -100,18 +102,19 @@ export const getCoupons = async (
     search
   });
 
-  return { dataList: formatListDates(dataList), rowCount: total };
+  return { dataList: formatListDates(dataList, ["startDate", "endDate", "createdAt", "updatedAt"]), rowCount: total };
 };
 
 export const createCoupon = async (
   data: Omit<Coupon, "id" | "createdAt" | "updatedAt" | "usageCount">,
 ) => {
   const id = nanoid(10);
-  return await couponRepository.create(id, {
+  const created = await couponRepository.create(id, {
     ...data,
     usageCount: 0,
     isDeleted: false,
   } as any);
+  return formatEntityDates(created, ["startDate", "endDate", "createdAt", "updatedAt"]);
 };
 
 export const updateCoupon = async (id: string, data: Partial<Coupon>) => {
@@ -122,7 +125,8 @@ export const updateCoupon = async (id: string, data: Partial<Coupon>) => {
   if (data.startDate) payload.startDate = new Date(data.startDate as any);
   if (data.endDate) payload.endDate = new Date(data.endDate as any);
 
-  return await couponRepository.update(id, payload);
+  const updated = await couponRepository.update(id, payload);
+  return formatEntityDates(updated, ["startDate", "endDate", "createdAt", "updatedAt"]);
 };
 
 export const deleteCoupon = async (id: string) => {

@@ -120,8 +120,8 @@ export const getOverviewByDateRange = async (
       }
     });
 
-    // Fetch product data for buying prices in batch
-    const products = await productRepository.findByIds(Array.from(productIds));
+    // Fetch product data for buying prices in batch (including sensitive data for COGS)
+    const products = await productRepository.findByIds(Array.from(productIds), true);
     const productPriceMap = new Map(products.map(p => [p.id, p.buyingPrice || 0]));
 
     // Calculate totals

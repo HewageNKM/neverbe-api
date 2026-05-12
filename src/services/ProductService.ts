@@ -63,24 +63,17 @@ export const addProducts = async (product: Partial<Product>, file: File) => {
   const id = `p-${nanoid(8)}`.toLowerCase();
   const thumbnail = await uploadThumbnail(file, id);
 
-  const tags: string[] = [];
-  if (product.brand) tags.push(product.brand.toLowerCase());
-  if (product.category) tags.push(product.category.toLowerCase());
-  
-  const genderData = (product as any).gender;
-  if (genderData) {
-    const genders = Array.isArray(genderData) ? genderData : [genderData];
-    genders.forEach((g: string) => g && tags.push(g.toLowerCase()));
-  }
-
   const allSizes = new Set<string>();
   (product.variants || []).forEach((v) => v.sizes?.forEach((s) => allSizes.add(s)));
+
+  // Sync tags with questionnaire fields
+  const finalTags = syncProductTags(product, product.tags || []);
 
   return await productRepository.create(id, {
     ...product,
     thumbnail,
     nameLower: product.name?.toLowerCase(),
-    tags,
+    tags: finalTags,
     availableSizes: Array.from(allSizes),
   });
 };
@@ -90,16 +83,6 @@ export const updateProduct = async (
   product: Partial<Product>,
   file?: File | null,
 ) => {
-  const tags: string[] = [];
-  if (product.brand) tags.push(product.brand.toLowerCase());
-  if (product.category) tags.push(product.category.toLowerCase());
-
-  const genderData = (product as any).gender;
-  if (genderData) {
-    const genders = Array.isArray(genderData) ? genderData : [genderData];
-    genders.forEach((g: string) => g && tags.push(g.toLowerCase()));
-  }
-
   const allSizes = new Set<string>();
   (product.variants || []).forEach((v) => v.sizes?.forEach((s) => allSizes.add(s)));
 
@@ -113,13 +96,44 @@ export const updateProduct = async (
     thumbnail = await uploadThumbnail(file, id);
   }
 
+  // Sync tags with questionnaire fields
+  const finalTags = syncProductTags(product, product.tags || []);
+
   return await productRepository.update(id, {
     ...product,
     thumbnail,
     nameLower: product.name?.toLowerCase(),
-    tags,
+    tags: finalTags,
     availableSizes: Array.from(allSizes),
   });
+};
+
+/**
+ * Syncs product attributes from questionnaire fields into the tags array
+ */
+const syncProductTags = (product: Partial<Product>, existingTags: string[] = []): string[] => {
+  const tagSet = new Set<string>(existingTags.map(t => t.toLowerCase()));
+
+  // Standard categorization fields
+  if (product.brand) tagSet.add(product.brand.toLowerCase());
+  if (product.category) tagSet.add(product.category.toLowerCase());
+
+  // Questionnaire fields from ERP
+  const attributes: (keyof any)[] = ["gender", "occasion", "style", "season", "fit", "material"];
+  
+  attributes.forEach(attr => {
+    const val = (product as any)[attr];
+    if (val) {
+      const vals = Array.isArray(val) ? val : [val];
+      vals.forEach((v: string) => {
+        if (v && typeof v === "string") {
+          tagSet.add(v.toLowerCase().trim());
+        }
+      });
+    }
+  });
+
+  return Array.from(tagSet);
 };
 
 // ====================== Retrieval ======================
@@ -146,12 +160,12 @@ export const getProducts = async (
 };
 
 export const getProductById = async (id: string): Promise<Product> => {
-  const product = await productRepository.findById(id);
+  const product = await productRepository.findById(id, true);
   if (!product) throw new AppError("Product not found", 404);
   return {
     ...product,
-    variants: product.variants.filter((v) => !v.isDeleted),
-  };
+    variants: (product.variants || []).filter((v) => !v.isDeleted),
+  } as Product;
 };
 
 export const getPopularProducts = async (

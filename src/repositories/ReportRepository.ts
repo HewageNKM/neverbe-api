@@ -79,9 +79,10 @@ export class ReportRepository extends BaseRepository<any> {
    */
   async findAllProducts(): Promise<any[]> {
     const snapshot = await this.collection.firestore.collection("products")
-      .where("isDeleted", "==", false)
       .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => p.isDeleted !== true);
   }
 
   /**

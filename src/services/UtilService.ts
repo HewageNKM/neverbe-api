@@ -8,12 +8,19 @@ export const toSafeLocaleString = (val: any) => {
   if (!val) return null;
 
   try {
-    const date =
-      val instanceof Timestamp
-        ? val.toDate()
-        : typeof (val as Timestamp)?.toDate === "function"
-        ? (val as Timestamp).toDate()
-        : new Date(val);
+    let date: Date;
+
+    // Handle Firestore Timestamp instances or raw objects with _seconds
+    if (val instanceof Timestamp) {
+      date = val.toDate();
+    } else if (typeof val.toDate === "function") {
+      date = val.toDate();
+    } else if (val && typeof val === "object" && "_seconds" in val) {
+      // Handle serialized raw Firestore object
+      date = new Date(val._seconds * 1000 + (val._nanoseconds || 0) / 1000000);
+    } else {
+      date = new Date(val);
+    }
 
     if (isNaN(date.getTime())) return String(val);
 
@@ -82,6 +89,10 @@ export const parseToDayjs = (val: any) => {
   if (!val) return null;
   if (val instanceof Timestamp) return dayjs(val.toDate());
   if (typeof val.toDate === "function") return dayjs(val.toDate());
+  
+  if (val && typeof val === "object" && "_seconds" in val) {
+    return dayjs(new Date(val._seconds * 1000 + (val._nanoseconds || 0) / 1000000));
+  }
 
   if (typeof val === "string") {
     const formats = [

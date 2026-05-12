@@ -27,6 +27,12 @@ export interface Product {
   isDeleted?: boolean;
 
   tags: string[];
+  gender?: string[]; 
+  occasion?: string[];
+  style?: string[];
+  season?: string[];
+  fit?: string;
+  material?: string;
   availableSizes?: string[]; // Denormalized from variants for search
 
   // --- NEW DENORMALIZED FIELDS ---

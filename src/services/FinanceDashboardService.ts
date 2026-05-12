@@ -90,8 +90,8 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
     .map(([date, vals]) => ({ date, ...vals }))
     .sort((a, b) => (parseToDayjs(a.date)?.valueOf() || 0) - (parseToDayjs(b.date)?.valueOf() || 0));
 
-  const recentPetty = await pettyCashRepository.findRecent(5);
-  const recentPayments = await paymentRecordRepository.findRecent(5);
+  const recentPetty = formatListDates(await pettyCashRepository.findRecent(5), ["date", "createdAt", "updatedAt"]);
+  const recentPayments = formatListDates(await paymentRecordRepository.findRecent(5), ["date", "createdAt", "updatedAt"]);
 
   const transactions = [
     ...recentPetty.map((data) => ({
@@ -102,7 +102,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
       category: data.category,
       amount: Number(data.amount),
       type: data.type,
-      note: data.note || data.description,
+      note: data.note || data.description || "No Note",
     })),
     ...recentPayments.map((data) => ({
       id: data.id,

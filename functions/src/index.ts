@@ -13,7 +13,6 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 
 export * from "./jobs/cleanupFailedOrders";
-export * from "./jobs/trainAIModels";
 export * from "./triggers/inventorySync";
 
 // Start writing functions
@@ -31,7 +30,6 @@ export * from "./triggers/inventorySync";
 // this will be the maximum concurrent request count.
 setGlobalOptions({ 
   maxInstances: 10,
-  concurrency: 1 // Keep low for ML/TensorFlow memory safety
 });
 
 // export const helloWorld = onRequest((request, response) => {

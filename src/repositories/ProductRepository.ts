@@ -17,6 +17,7 @@ export interface ProductQueryOptions {
   size?: number;
   orderBy?: string;
   orderDirection?: "asc" | "desc";
+  includeSensitiveData?: boolean;
 }
 
 /**
@@ -25,6 +26,9 @@ export interface ProductQueryOptions {
 export interface ProductFilterOptions extends ProductQueryOptions {
   sizes?: string[];
   gender?: string;
+  occasion?: string;
+  style?: string;
+  includeSensitiveData?: boolean;
 }
 
 /**
@@ -72,13 +76,17 @@ export class ProductRepository extends BaseRepository<Product> {
   /**
    * Prepare product for client response
    */
-  private prepareProduct(data: Product): Omit<Product, "buyingPrice"> {
-    return this.sanitizeProduct({
+  private prepareProduct(data: Product, includeSensitiveData: boolean = false): Product | Omit<Product, "buyingPrice"> {
+    const variants = this.filterActiveVariants(data.variants);
+    const productData = {
       ...data,
-      variants: this.filterActiveVariants(data.variants),
+      variants,
       createdAt: null,
       updatedAt: null,
-    });
+    };
+
+    if (includeSensitiveData) return productData;
+    return this.sanitizeProduct(productData);
   }
 
   // --- Helpers for In-Memory Filtering ---
@@ -126,7 +134,7 @@ export class ProductRepository extends BaseRepository<Product> {
     // Execute
     const snapshot = await builder.build().get();
     const dataList = snapshot.docs
-      .map((doc) => this.prepareProduct(doc.data() as Product))
+      .map((doc) => this.prepareProduct(doc.data() as Product, options.includeSensitiveData))
       .filter((p) => (p.variants?.length ?? 0) > 0);
 
     return { total, dataList };
@@ -156,7 +164,7 @@ export class ProductRepository extends BaseRepository<Product> {
     const snapshot = await builder.build().get();
 
     let dataList = snapshot.docs
-      .map((doc) => this.prepareProduct(doc.data() as Product))
+      .map((doc) => this.prepareProduct(doc.data() as Product, options.includeSensitiveData))
       .filter((p) => (p.variants?.length ?? 0) > 0);
 
     // 4. Post-Fetch In-Memory Filtering
@@ -174,7 +182,7 @@ export class ProductRepository extends BaseRepository<Product> {
   /**
    * Find single product by ID
    */
-  async findById(id: string): Promise<Product | null> {
+  async findById(id: string, includeSensitiveData: boolean = false): Promise<Product | null> {
     const builder = new FirestoreQueryBuilder(this.getListedProductsQuery())
       .where("id", "==", id)
       .limit(1);
@@ -182,17 +190,17 @@ export class ProductRepository extends BaseRepository<Product> {
     const snapshot = await builder.build().get();
 
     if (snapshot.empty) return null;
-    return this.prepareProduct(snapshot.docs[0].data() as Product);
+    return this.prepareProduct(snapshot.docs[0].data() as Product, includeSensitiveData);
   }
 
   /**
    * Find multiple products by IDs
    */
-  async findByIds(ids: string[]): Promise<Product[]> {
+  async findByIds(ids: string[], includeSensitiveData: boolean = false): Promise<Product[]> {
     if (!ids.length) return [];
     const docs = await this.findDocsByIds(ids, "id");
     return docs
-      .map((doc) => this.prepareProduct(doc.data() as Product))
+      .map((doc) => this.prepareProduct(doc.data() as Product, includeSensitiveData))
       .filter((p) => p.variants?.length > 0);
   }
 

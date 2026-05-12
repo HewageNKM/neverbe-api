@@ -65,14 +65,14 @@ export class StockRepository extends BaseRepository<any> {
  */
 export class PettyCashRepository extends BaseRepository<any> {
   constructor() {
-    super("petty_cash");
+    super("expenses");
   }
 
   /**
    * Find transactions for dashboard
    */
   async findForDashboard(startDate: Date): Promise<any[]> {
-    const snapshot = await this.collection.firestore.collection("expenses")
+    const snapshot = await this.collection
       .where("status", "==", "APPROVED")
       .where("date", ">=", startDate)
       .get();
@@ -83,7 +83,7 @@ export class PettyCashRepository extends BaseRepository<any> {
    * Get recent expenses
    */
   async findRecent(limit: number = 5): Promise<any[]> {
-    const snapshot = await this.collection.firestore.collection("expenses")
+    const snapshot = await this.collection
       .orderBy("date", "desc")
       .limit(limit)
       .get();
@@ -99,7 +99,7 @@ export class PettyCashRepository extends BaseRepository<any> {
     category?: string;
     stockId?: string;
   }): Promise<any[]> {
-    let query = this.getActiveQuery();
+    let query = this.getNonDeletedQuery();
 
     if (filters.status) query = query.where("status", "==", filters.status);
     if (filters.type) query = query.where("type", "==", filters.type);

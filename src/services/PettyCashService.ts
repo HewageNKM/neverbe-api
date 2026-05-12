@@ -66,7 +66,8 @@ export const updatePettyCash = async (
   if (data.date) updates.date = data.date instanceof Timestamp ? data.date : Timestamp.fromDate(parseToDayjs(data.date)?.toDate() || new Date());
 
   await pettyCashRepository.update(id, updates);
-  return await pettyCashRepository.findById(id) as PettyCash;
+  const updated = await pettyCashRepository.findById(id);
+  return formatEntityDates(updated as any, ["date", "createdAt", "updatedAt", "reviewedAt"]);
 };
 
 export const getPettyCashList = async (

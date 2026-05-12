@@ -34,7 +34,8 @@ export const createBankAccount = async (
   data: Omit<BankAccount, "id" | "createdAt" | "updatedAt" | "isDeleted">
 ): Promise<BankAccount> => {
   const id = `ba-${nanoid(8)}`;
-  return await bankAccountRepository.create(id, data);
+  const created = await bankAccountRepository.create(id, data);
+  return formatEntityDates(created);
 };
 
 /**
@@ -47,7 +48,8 @@ export const updateBankAccount = async (
   const exists = await bankAccountRepository.findById(id);
   if (!exists) throw new AppError(`Bank Account with ID ${id} not found`, 404);
 
-  return await bankAccountRepository.update(id, data);
+  const updated = await bankAccountRepository.update(id, data);
+  return formatEntityDates(updated);
 };
 
 /**
@@ -71,7 +73,8 @@ export const updateBankAccountBalance = async (
   const exists = await bankAccountRepository.findById(id);
   if (!exists) throw new AppError("Account not found", 404);
 
-  return await bankAccountRepository.updateBalance(id, amount, type);
+  const updated = await bankAccountRepository.updateBalance(id, amount, type);
+  return formatEntityDates(updated);
 };
 
 /**
