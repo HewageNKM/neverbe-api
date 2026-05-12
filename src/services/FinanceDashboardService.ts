@@ -2,7 +2,8 @@ import { orderRepository } from "@/repositories/OrderRepository";
 import { pettyCashRepository, paymentRecordRepository } from "@/repositories/FinanceRepositories";
 import { getBankAccounts } from "./BankAccountService";
 import { getInvoiceAgingSummary } from "./SupplierInvoiceService";
-import { formatToSLDate } from "./UtilService";
+import { formatToSLDate, getNowSL, parseToDayjs } from "./UtilService";
+import dayjs from "../utils/dayjs";
 
 /**
  * FinanceDashboardService - Business logic for financial analytics
@@ -27,14 +28,13 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
 
   const invoiceSummary = await getInvoiceAgingSummary();
 
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  const now = getNowSL();
+  const startOfMonth = now.startOf("month").toDate();
 
   // Use repositories instead of adminFirestore
   const pettyCashData = await pettyCashRepository.findForDashboard(startOfMonth);
   const paymentRecordsData = await paymentRecordRepository.findForDashboard(startOfMonth);
-  const ordersData = await orderRepository.findForReport({ start: startOfMonth, end: new Date() });
+  const ordersData = await orderRepository.findForReport({ start: startOfMonth, end: now.toDate() });
 
   let monthlyExpenses = 0;
   let monthlyIncome = 0;
@@ -88,7 +88,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
 
   const cashFlow = Object.entries(cashFlowMap)
     .map(([date, vals]) => ({ date, ...vals }))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .sort((a, b) => (parseToDayjs(a.date)?.valueOf() || 0) - (parseToDayjs(b.date)?.valueOf() || 0));
 
   const recentPetty = await pettyCashRepository.findRecent(5);
   const recentPayments = await paymentRecordRepository.findRecent(5);
@@ -97,7 +97,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
     ...recentPetty.map((data) => ({
       id: data.id,
       ...data,
-      dateObj: (data.date as any).toDate?.() || new Date(data.date),
+      dateVal: parseToDayjs(data.date)?.valueOf() || 0,
       date: formatToSLDate(data.date, "DD/MM/YYYY"),
       category: data.category,
       amount: Number(data.amount),
@@ -107,7 +107,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
     ...recentPayments.map((data) => ({
       id: data.id,
       ...data,
-      dateObj: (data.date as any).toDate?.() || new Date(data.date),
+      dateVal: parseToDayjs(data.date)?.valueOf() || 0,
       date: formatToSLDate(data.date, "DD/MM/YYYY"),
       category: data.category,
       amount: Number(data.amount),
@@ -115,7 +115,7 @@ export const getFinanceDashboardData = async (): Promise<FinanceDashboardData> =
       note: data.description,
     })),
   ]
-    .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
+    .sort((a, b) => b.dateVal - a.dateVal)
     .slice(0, 5);
 
   return {

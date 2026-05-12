@@ -3,7 +3,7 @@ import { reportRepository } from "@/repositories/ReportRepository";
 import { brandRepository } from "@/repositories/BrandRepository";
 import { categoryRepository } from "@/repositories/CategoryRepository";
 import { productRepository } from "@/repositories/ProductRepository";
-import { toSafeLocaleString, formatListDates } from "./UtilService";
+import { toSafeLocaleString, formatListDates, parseToDayjs } from "./UtilService";
 import dayjs, { SL_TZ } from "../utils/dayjs";
 
 import { Order } from "@/model/Order";
@@ -23,8 +23,8 @@ export const getDailySaleReport = async (
 ) => {
   try {
     const data = await reportRepository.findOrdersForAnalysis({
-      start: from ? new Date(from) : new Date(0),
-      end: to ? new Date(to) : new Date(),
+      start: parseToDayjs(from)?.toDate() || new Date(0),
+      end: parseToDayjs(to)?.toDate() || new Date(),
       paymentStatus: status,
     });
 
@@ -38,7 +38,7 @@ export const getDailySaleReport = async (
     ) {
       const dateStr = currentDate.format("YYYY-MM-DD");
       const dayOrders = data.filter((o) => {
-        const orderDate = dayjs(o.createdAt instanceof Timestamp ? o.createdAt.toDate() : o.createdAt).tz(SL_TZ);
+        const orderDate = parseToDayjs(o.createdAt)?.tz(SL_TZ);
         return orderDate.isSame(currentDate, "day");
       });
 
@@ -68,8 +68,8 @@ export const getDailySaleReport = async (
 export const getSalesSummary = async (from: string, to: string) => {
   try {
     const data = await reportRepository.findOrdersForAnalysis({
-      start: from ? new Date(from) : new Date(0),
-      end: to ? new Date(to) : new Date(),
+      start: parseToDayjs(from)?.toDate() || new Date(0),
+      end: parseToDayjs(to)?.toDate() || new Date(),
       paymentStatus: "Paid",
     });
 
@@ -96,8 +96,8 @@ export const getSalesSummary = async (from: string, to: string) => {
 export const getBrandSalesReport = async (from: string, to: string) => {
   try {
     const data = await reportRepository.findOrdersForAnalysis({
-      start: from ? new Date(from) : new Date(0),
-      end: to ? new Date(to) : new Date(),
+      start: parseToDayjs(from)?.toDate() || new Date(0),
+      end: parseToDayjs(to)?.toDate() || new Date(),
       paymentStatus: "Paid",
     });
 
@@ -141,8 +141,8 @@ export const getCategorySalesReport = async (
 ) => {
   try {
     const data = await reportRepository.findOrdersForAnalysis({
-      start: from ? new Date(from) : new Date(0),
-      end: to ? new Date(to) : new Date(),
+      start: parseToDayjs(from)?.toDate() || new Date(0),
+      end: parseToDayjs(to)?.toDate() || new Date(),
       paymentStatus: status,
     });
 
@@ -205,8 +205,8 @@ export const getCategorySalesReport = async (
 export const getPaymentMethodReport = async (from: string, to: string) => {
   try {
     const data = await reportRepository.findOrdersForAnalysis({
-      start: from ? new Date(from) : new Date(0),
-      end: to ? new Date(to) : new Date(),
+      start: parseToDayjs(from)?.toDate() || new Date(0),
+      end: parseToDayjs(to)?.toDate() || new Date(),
       paymentStatus: "Paid",
     });
 
@@ -254,8 +254,8 @@ export const getInventoryReport = async () => {
 
 export const getProfitLossReport = async (from: string, to: string) => {
   try {
-    const start = from ? new Date(from) : new Date(0);
-    const end = to ? new Date(to) : new Date();
+    const start = parseToDayjs(from)?.toDate() || new Date(0);
+    const end = parseToDayjs(to)?.toDate() || new Date();
 
     // Fetch orders for revenue and COGS
     const orders = await reportRepository.findOrdersForAnalysis({
@@ -328,7 +328,7 @@ export const getSalesPerformanceReport = async (
     const performanceMap: Record<string, any> = {};
 
     data.forEach((order) => {
-      const date = dayjs(order.createdAt.toDate()).tz(SL_TZ);
+      const date = parseToDayjs(order.createdAt)?.tz(SL_TZ);
       let key: string;
 
       if (groupBy === "month") {
@@ -586,8 +586,8 @@ export const getCustomerLoyaltyReport = async (
 
 export const getFinancialHealthReport = async (from: string, to: string) => {
   try {
-    const start = from ? new Date(from) : new Date(0);
-    const end = to ? new Date(to) : new Date();
+    const start = parseToDayjs(from)?.toDate() || new Date(0);
+    const end = parseToDayjs(to)?.toDate() || new Date();
 
     const orders = await reportRepository.findOrdersForAnalysis({
       start,
@@ -681,8 +681,8 @@ export const getTopSellingProducts = async (
   to: string,
   limit: number = 10,
 ) => {
-  const start = new Date(from);
-  const end = new Date(to);
+  const start = parseToDayjs(from)?.toDate() || new Date(0);
+  const end = parseToDayjs(to)?.toDate() || new Date();
   const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
 
   const productMap = new Map<
@@ -719,15 +719,14 @@ export const getSalesVsDiscount = async (
   to: string,
   groupBy: "day" | "month" = "day",
 ) => {
-  const start = new Date(from);
-  const end = new Date(to);
+  const start = parseToDayjs(from)?.toDate() || new Date(0);
+  const end = parseToDayjs(to)?.toDate() || new Date();
   const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
 
   const groups = new Map<string, { sales: number; discount: number }>();
 
   orders.forEach((order) => {
-    const date =
-      (order.createdAt as any)?.toDate?.() || new Date(order.createdAt as any);
+    const date = parseToDayjs(order.createdAt);
     const key =
       groupBy === "day"
         ? dayjs(date).tz(SL_TZ).format("YYYY-MM-DD")
@@ -748,8 +747,8 @@ export const getSalesVsDiscount = async (
  * Get tax report summary
  */
 export const getTaxReport = async (from: string, to: string) => {
-  const start = new Date(from);
-  const end = new Date(to);
+  const start = parseToDayjs(from)?.toDate() || new Date(0);
+  const end = parseToDayjs(to)?.toDate() || new Date();
   const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
 
   let totalTax = 0;
@@ -790,8 +789,8 @@ export const fetchStockValuationByStock = async () => {
  * Get cash flow report
  */
 export const getCashFlowReport = async (from: string, to: string) => {
-  const start = new Date(from);
-  const end = new Date(to);
+  const start = parseToDayjs(from)?.toDate() || new Date(0);
+  const end = parseToDayjs(to)?.toDate() || new Date();
   const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
 
   const methodMap = new Map<string, { fee: number; total: number }>();
