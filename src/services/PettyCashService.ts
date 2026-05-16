@@ -29,7 +29,9 @@ export const addPettyCash = async (
   const newEntry = {
     ...data,
     id,
-    date: data.date instanceof Timestamp ? data.date : Timestamp.fromDate(parseToDayjs(data.date)?.toDate() || new Date()),
+    date: data.date instanceof Timestamp 
+      ? data.date 
+      : Timestamp.fromDate(parseToDayjs(data.date)?.isValid() ? parseToDayjs(data.date)!.toDate() : new Date()),
     attachment: attachmentUrl,
     status: "PENDING",
     isDeleted: false,
@@ -63,7 +65,12 @@ export const updatePettyCash = async (
     ...data,
     attachment: attachmentUrl,
   };
-  if (data.date) updates.date = data.date instanceof Timestamp ? data.date : Timestamp.fromDate(parseToDayjs(data.date)?.toDate() || new Date());
+  if (data.date) {
+    const parsed = parseToDayjs(data.date);
+    updates.date = data.date instanceof Timestamp 
+      ? data.date 
+      : Timestamp.fromDate(parsed?.isValid() ? parsed.toDate() : new Date());
+  }
 
   await pettyCashRepository.update(id, updates);
   const updated = await pettyCashRepository.findById(id);

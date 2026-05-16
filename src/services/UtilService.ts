@@ -10,14 +10,16 @@ export const toSafeLocaleString = (val: any) => {
   try {
     let date: Date;
 
-    // Handle Firestore Timestamp instances or raw objects with _seconds
+    // Handle Firestore Timestamp instances or raw objects with _seconds or seconds
     if (val instanceof Timestamp) {
       date = val.toDate();
     } else if (typeof val.toDate === "function") {
       date = val.toDate();
-    } else if (val && typeof val === "object" && "_seconds" in val) {
+    } else if (val && typeof val === "object" && ("_seconds" in val || "seconds" in val)) {
       // Handle serialized raw Firestore object
-      date = new Date(val._seconds * 1000 + (val._nanoseconds || 0) / 1000000);
+      const s = val._seconds ?? val.seconds;
+      const ns = val._nanoseconds ?? val.nanoseconds ?? 0;
+      date = new Date(s * 1000 + ns / 1000000);
     } else {
       date = new Date(val);
     }
@@ -89,9 +91,11 @@ export const parseToDayjs = (val: any) => {
   if (!val) return null;
   if (val instanceof Timestamp) return dayjs(val.toDate());
   if (typeof val.toDate === "function") return dayjs(val.toDate());
-  
-  if (val && typeof val === "object" && "_seconds" in val) {
-    return dayjs(new Date(val._seconds * 1000 + (val._nanoseconds || 0) / 1000000));
+
+  if (val && typeof val === "object" && ("_seconds" in val || "seconds" in val)) {
+    const s = val._seconds ?? val.seconds;
+    const ns = val._nanoseconds ?? val.nanoseconds ?? 0;
+    return dayjs(new Date(s * 1000 + ns / 1000000));
   }
 
   if (typeof val === "string") {
@@ -107,5 +111,6 @@ export const parseToDayjs = (val: any) => {
     }
     return dayjs(val); // Fallback to auto
   }
-  return dayjs(val);
+  const final = dayjs(val);
+  return final.isValid() ? final : null;
 };

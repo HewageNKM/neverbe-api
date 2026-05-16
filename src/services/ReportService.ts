@@ -786,28 +786,97 @@ export const fetchStockValuationByStock = async () => {
 };
 
 /**
- * Get cash flow report
+ * Get cash flow report with daily breakdown and summary
  */
 export const getCashFlowReport = async (from: string, to: string) => {
-  const start = parseToDayjs(from)?.toDate() || new Date(0);
-  const end = parseToDayjs(to)?.toDate() || new Date();
-  const orders = await orderRepository.findPaidOrdersInDateRange(start, end);
+  try {
+    const start = parseToDayjs(from)?.tz(SL_TZ).startOf("day").toDate() || new Date(0);
+    const end = parseToDayjs(to)?.tz(SL_TZ).endOf("day").toDate() || new Date();
 
-  const methodMap = new Map<string, { fee: number; total: number }>();
+    // Fetch data
+    const orders = await orderRepository.findByStatusInDateRange(start, end, ["Paid", "PAID"]);
+    const expenses = await reportRepository.findExpensesForReport({
+      start,
+      end,
+      status: "APPROVED",
+    });
 
-  orders.forEach((order) => {
-    const method = order.paymentMethod || "Unknown";
-    const existing = methodMap.get(method) || { fee: 0, total: 0 };
-    existing.total += order.total || 0;
-    existing.fee += order.fee || 0;
-    methodMap.set(method, existing);
-  });
+    const dailyMap = new Map<string, any>();
+    let currentDate = dayjs(from).tz(SL_TZ).startOf("day");
+    const lastDate = dayjs(to).tz(SL_TZ).startOf("day");
 
-  return Array.from(methodMap.entries()).map(([method, data]) => ({
-    method,
-    ...data,
-  }));
+    // Initialize daily map with all dates in range
+    while (currentDate.isBefore(lastDate) || currentDate.isSame(lastDate, "day")) {
+      const dateStr = currentDate.format("YYYY-MM-DD");
+      dailyMap.set(dateStr, {
+        date: dateStr,
+        orders: 0,
+        cashIn: 0,
+        transactionFees: 0,
+        expenses: 0,
+        netCashFlow: 0,
+      });
+      currentDate = currentDate.add(1, "day");
+    }
+
+    // Aggregate orders
+    orders.forEach((order) => {
+      const dateStr = parseToDayjs(order.createdAt)?.tz(SL_TZ).format("YYYY-MM-DD");
+      if (dateStr && dailyMap.has(dateStr)) {
+        const day = dailyMap.get(dateStr)!;
+        day.orders += 1;
+        day.cashIn += order.total || 0;
+        day.transactionFees += (order as any).fee || 0;
+      }
+    });
+
+    // Aggregate expenses
+    expenses.forEach((expense) => {
+      const dateStr = parseToDayjs(expense.date)?.tz(SL_TZ).format("YYYY-MM-DD");
+      if (dateStr && dailyMap.has(dateStr)) {
+        const day = dailyMap.get(dateStr)!;
+        day.expenses += expense.amount || 0;
+      }
+    });
+
+    // Aggregate by method
+    const methodMap = new Map<string, any>();
+    orders.forEach((order) => {
+      const method = order.paymentMethod || "Unknown";
+      if (!methodMap.has(method)) {
+        methodMap.set(method, { method, total: 0, fee: 0, orders: 0 });
+      }
+      const m = methodMap.get(method)!;
+      m.total += order.total || 0;
+      m.fee += (order as any).fee || 0;
+      m.orders += 1;
+    });
+
+    // Calculate net cash flow per day and prepare result
+    const daily = Array.from(dailyMap.values()).map((day) => ({
+      ...day,
+      netCashFlow: day.cashIn - day.transactionFees - day.expenses,
+    }));
+
+    // Calculate summary totals
+    const summary = {
+      totalOrders: daily.reduce((sum, d) => sum + d.orders, 0),
+      totalCashIn: daily.reduce((sum, d) => sum + d.cashIn, 0),
+      totalTransactionFees: daily.reduce((sum, d) => sum + d.transactionFees, 0),
+      totalExpenses: daily.reduce((sum, d) => sum + d.expenses, 0),
+      totalNetCashFlow: daily.reduce((sum, d) => sum + d.netCashFlow, 0),
+      byMethod: Array.from(methodMap.values()),
+      daily,
+    };
+
+
+    return { summary };
+  } catch (error: any) {
+    console.error("[ReportService] Cash flow report error:", error);
+    throw error;
+  }
 };
+
 
 /**
  * Get customer analytics
